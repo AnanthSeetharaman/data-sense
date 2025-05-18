@@ -27,7 +27,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={inter.variable}> {/* Use the updated font variable */}
+    <html lang="en" className={inter.variable}>
       <body className="antialiased">
         <AppShell>{children}</AppShell>
         <Toaster />
