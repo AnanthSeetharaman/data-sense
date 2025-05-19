@@ -125,15 +125,7 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
           </div>
         </CardHeader>
         <CardContent className="p-6">
-            <Image
-              src={`https://placehold.co/1200x300.png`}
-              alt={`Visual representation of ${asset.name}`}
-              width={1200}
-              height={300}
-              className="w-full h-48 object-cover rounded-lg mb-6"
-              data-ai-hint="data graph"
-            />
-          <p className="text-foreground leading-relaxed">{asset.description}</p>
+          <p className="text-foreground leading-relaxed mb-6">{asset.description}</p>
         </CardContent>
       </Card>
 
@@ -312,3 +304,4 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
     </div>
   );
 }
+
