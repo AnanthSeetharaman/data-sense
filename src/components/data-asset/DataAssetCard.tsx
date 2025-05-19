@@ -45,14 +45,6 @@ export function DataAssetCard({ asset }: DataAssetCardProps) {
           ))}
           {tags.length > 3 && <Badge variant="outline" className="text-xs">+{tags.length - 3} more</Badge>}
         </div>
-        {/* Removed Image component - <Image
-          src={`https://placehold.co/600x200.png`}
-          alt={`Visual representation of ${name}`}
-          width={600}
-          height={200}
-          className="w-full h-32 object-cover rounded-md mt-2"
-          data-ai-hint="data abstract"
-        /> */}
         <div className="text-xs text-muted-foreground space-y-1 pt-2">
           <div className="flex items-center gap-1.5">
             <Layers className="h-3.5 w-3.5" />
@@ -77,9 +69,7 @@ export function DataAssetCard({ asset }: DataAssetCardProps) {
               <Eye className="mr-2 h-4 w-4" /> View Details
             </Button>
           </Link>
-          <Button variant="outline" size="sm">
-            <Share2 className="mr-2 h-4 w-4" /> Share
-          </Button>
+          {/* Share button removed from here */}
         </div>
       </CardFooter>
     </Card>

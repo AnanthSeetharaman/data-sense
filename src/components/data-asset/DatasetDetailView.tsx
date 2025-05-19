@@ -119,7 +119,7 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
               </div>
             </div>
             <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm"><Share2 className="mr-2 h-4 w-4" />Share</Button>
+                {/* Share button removed from here */}
                 <BookmarkButton assetId={asset.id} size="default" />
             </div>
           </div>
@@ -304,4 +304,3 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
     </div>
   );
 }
-
