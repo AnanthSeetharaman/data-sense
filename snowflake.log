@@ -140,3 +140,21 @@
 {"level":"INFO","message":"[11:49:11.032 AM]: No config file path found. Client config will not be used."}
 {"level":"INFO","message":"[11:49:11.040 AM]: Easy Logging is disabled as no config has been found"}
 {"level":"INFO","message":"[11:49:11.052 AM]: Connection[id: 7cc0afb7-f420-475e-b582-32746102487a] - connected successfully after 50.51589299924672 milliseconds"}
+{"level":"INFO","message":"[11:49:16.535 AM]: Creating new connection object"}
+{"level":"INFO","message":"[11:49:16.540 AM]: Creating Connection[id: 3193aa47-e9b4-4678-a76d-7e2b8a184a27] with host: CONNECT-NIELSENIQ_PROD_WEST_EU.snowflakecomputing.com, account: CONNECT-NIELSENIQ_PROD_WEST_EU, accessUrl: https://CONNECT-NIELSENIQ_PROD_WEST_EU.snowflakecomputing.com, user: osauser@nielseniq.com, password is provided, role: undefined, database: OSA_FR_45380_8_WKLY_AGGR, schema: OSA_FR_45380_8_WKLY_AGGR_2881840, warehouse: NIELSENBUY_CS_CDM_INGESTION_3XL, region: undefined, authenticator: SNOWFLAKE, ocsp mode: FAIL_OPEN, "}
+{"level":"INFO","message":"[11:49:16.548 AM]: Connection[id: 3193aa47-e9b4-4678-a76d-7e2b8a184a27] additional details: passcode in password is provided, passcode is not provided, private key is not provided, application: undefined, client name: snowflake-sdk, client version: 1.15.0, retry timeout: 300, private key path: undefined, private key pass is not provided, client store temporary credential: false, browser response timeout: 120000"}
+{"level":"INFO","message":"[11:49:16.552 AM]: Connection[id: 3193aa47-e9b4-4678-a76d-7e2b8a184a27] - connection object created successfully."}
+{"level":"INFO","message":"[11:49:16.553 AM]: Connection[id: 3193aa47-e9b4-4678-a76d-7e2b8a184a27] - connecting. Associated Snowflake domain: GLOBAL"}
+{"level":"INFO","message":"[11:49:16.556 AM]: Connection[id: 3193aa47-e9b4-4678-a76d-7e2b8a184a27] - authentication successful using: SNOWFLAKE"}
+{"level":"INFO","message":"[11:49:16.560 AM]: Connection[id: 3193aa47-e9b4-4678-a76d-7e2b8a184a27] - connected successfully after 7.040579998865724 milliseconds"}
+{"level":"INFO","message":"[12:35:58.609 PM]: Creating new connection object"}
+{"level":"INFO","message":"[12:35:58.632 PM]: Creating Connection[id: fe29f9a4-3613-4640-8276-b45f29ed1b5f] with host: CONNECT-NIELSENIQ_PROD_WEST_EU.snowflakecomputing.com, account: CONNECT-NIELSENIQ_PROD_WEST_EU, accessUrl: https://CONNECT-NIELSENIQ_PROD_WEST_EU.snowflakecomputing.com, user: osauser@nielseniq.com, password is provided, role: undefined, database: OSA_FR_45380_8_WKLY_AGGR, schema: OSA_FR_45380_8_WKLY_AGGR_2881840, warehouse: NIELSENBUY_CS_CDM_INGESTION_3XL, region: undefined, authenticator: SNOWFLAKE, ocsp mode: FAIL_OPEN, "}
+{"level":"INFO","message":"[12:35:58.635 PM]: Connection[id: fe29f9a4-3613-4640-8276-b45f29ed1b5f] additional details: passcode in password is provided, passcode is not provided, private key is not provided, application: undefined, client name: snowflake-sdk, client version: 1.15.0, retry timeout: 300, private key path: undefined, private key pass is not provided, client store temporary credential: false, browser response timeout: 120000"}
+{"level":"INFO","message":"[12:35:58.638 PM]: Connection[id: fe29f9a4-3613-4640-8276-b45f29ed1b5f] - connection object created successfully."}
+{"level":"INFO","message":"[12:35:58.642 PM]: Connection[id: fe29f9a4-3613-4640-8276-b45f29ed1b5f] - connecting. Associated Snowflake domain: GLOBAL"}
+{"level":"INFO","message":"[12:35:58.646 PM]: Connection[id: fe29f9a4-3613-4640-8276-b45f29ed1b5f] - authentication successful using: SNOWFLAKE"}
+{"level":"INFO","message":"[12:35:58.648 PM]: Trying to initialize Easy Logging"}
+{"level":"INFO","message":"[12:35:58.655 PM]: No client config detected."}
+{"level":"INFO","message":"[12:35:58.657 PM]: No config file path found. Client config will not be used."}
+{"level":"INFO","message":"[12:35:58.658 PM]: Easy Logging is disabled as no config has been found"}
+{"level":"INFO","message":"[12:35:58.673 PM]: Connection[id: fe29f9a4-3613-4640-8276-b45f29ed1b5f] - connected successfully after 30.628200998529792 milliseconds"}

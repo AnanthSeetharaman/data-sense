@@ -13,7 +13,7 @@ async function executeQuery(connection: Snowflake.Connection, sqlText: string): 
     }
     connection.execute({
       sqlText,
-      complete: (err, stmt, rows_from_execute) => { // Added rows_from_execute
+      complete: (err, stmt, rows_from_execute) => { 
         if (err) {
           console.error(`Failed to execute Snowflake query: ${sqlText}`, err);
           return reject(err);
@@ -23,7 +23,6 @@ async function executeQuery(connection: Snowflake.Connection, sqlText: string): 
             return reject(new Error("Snowflake statement is undefined after execution."));
         }
         
-        // For SELECT queries that return potentially many rows
         const data: any[] = [];
         try {
             const stream = stmt.streamRows();
@@ -49,7 +48,7 @@ async function executeQuery(connection: Snowflake.Connection, sqlText: string): 
 async function getColumnCount(connection: Snowflake.Connection, catalog: string, schema: string, tableName: string): Promise<number> {
   const sql = `
     SELECT COUNT(*) AS column_count
-    FROM "${catalog}".INFORMATION_SCHEMA.COLUMNS
+    FROM "${catalog.replace(/"/g, '""')}".INFORMATION_SCHEMA.COLUMNS
     WHERE TABLE_CATALOG = '${catalog.replace(/'/g, "''")}'
       AND TABLE_SCHEMA = '${schema.replace(/'/g, "''")}'
       AND TABLE_NAME = '${tableName.replace(/'/g, "''")}';`;
@@ -58,7 +57,7 @@ async function getColumnCount(connection: Snowflake.Connection, catalog: string,
     return rows[0] && rows[0].COLUMN_COUNT ? Number(rows[0].COLUMN_COUNT) : 0;
   } catch (error) {
     console.error(`Failed to get column count for ${catalog}.${schema}.${tableName}:`, error);
-    return 0; // Default to 0 if count fails
+    return 0; 
   }
 }
 
@@ -67,12 +66,12 @@ export async function GET() {
   const username = process.env.SNOWFLAKE_USERNAME;
   const password = process.env.SNOWFLAKE_PASSWORD;
   const warehouse = process.env.SNOWFLAKE_WAREHOUSE;
-  const database = process.env.SNOWFLAKE_DATABASE; // Used to filter in the query
+  const database = process.env.SNOWFLAKE_DATABASE; 
 
   if (!account || !username || !password || !warehouse || !database) {
     console.error("Snowflake API: Environment variables not fully configured.");
     return NextResponse.json(
-      { error: 'Snowflake environment variables are not fully configured.' },
+      { error: 'Snowflake environment variables are not fully configured. Ensure SNOWFLAKE_ACCOUNT, SNOWFLAKE_USERNAME, SNOWFLAKE_PASSWORD, SNOWFLAKE_WAREHOUSE, and SNOWFLAKE_DATABASE are set.' },
       { status: 500 }
     );
   }
@@ -81,7 +80,7 @@ export async function GET() {
     console.warn("Snowflake API: EXTERNALBROWSER authenticator is not supported for this API route.");
     return NextResponse.json(
       { error: 'EXTERNALBROWSER authenticator is not supported for API routes. Please use username/password or key-pair auth for server-side connections.' },
-      { status: 501 } // Not Implemented
+      { status: 501 } 
     );
   }
 
@@ -90,7 +89,7 @@ export async function GET() {
     username,
     password,
     warehouse,
-    database,
+    database, // Set default database for the connection
   };
   if (process.env.SNOWFLAKE_SCHEMA) {
     connectionOptions.schema = process.env.SNOWFLAKE_SCHEMA;
@@ -105,7 +104,7 @@ export async function GET() {
   } catch (createError: any) {
     console.error('Snowflake API: Error creating connection object:', createError);
     return NextResponse.json(
-      { error: `Failed to create Snowflake connection object: ${createError.message || 'Unknown error'}` },
+      { error: `Failed to create Snowflake connection object: ${createError.message || 'Unknown error during connection object creation.'}` },
       { status: 500 }
     );
   }
@@ -120,7 +119,7 @@ export async function GET() {
 
   try {
     await new Promise<void>((resolve, reject) => {
-      if (!connection) { // Should not happen given the check above, but as a safeguard
+      if (!connection) { 
           console.error('Snowflake API: Connection is null before connect call.');
           return reject(new Error('Snowflake connection is null before connect.'));
       }
@@ -133,8 +132,7 @@ export async function GET() {
       });
     });
 
-    // Use the SNOWFLAKE_DATABASE from .env to filter the query
-    const dbFilter = database.replace(/'/g, "''"); // Basic sanitization for SQL string
+    const dbFilter = database.replace(/'/g, "''"); 
 
     const mainQuery = `
       SELECT
@@ -145,15 +143,15 @@ export async function GET() {
           t.comment AS description,
           t.created,
           t.last_altered AS last_modified,
-          t.owner AS owner_role, -- Directly use t.owner for the role name
+          t.TABLE_OWNER AS owner_role, -- Corrected to TABLE_OWNER
           t.clustering_key,
           t.row_count,
           t.bytes
       FROM
           "${dbFilter}".information_schema.tables t
       WHERE
-          t.table_schema NOT IN ('INFORMATION_SCHEMA', 'PUBLIC') -- Exclude default/meta schemas
-          AND t.table_catalog = '${dbFilter}' -- Filter by the database from .env
+          t.table_schema NOT IN ('INFORMATION_SCHEMA', 'PUBLIC')
+          AND t.table_catalog = '${dbFilter}' 
           AND t.table_type IN ('BASE TABLE', 'VIEW')
       ORDER BY
           t.table_schema, t.table_name;
@@ -182,16 +180,16 @@ export async function GET() {
         sampleRecordCount: row.ROW_COUNT ? Number(row.ROW_COUNT) : undefined,
         description: row.DESCRIPTION || undefined,
         owner: row.OWNER_ROLE || undefined,
-        isSensitive: false,
+        isSensitive: false, 
         lastModified: lastModified,
         created_at: createdAt,
-        updated_at: lastModified,
-        rawSchemaForAI: "Schema details not fetched in this overview.",
-        rawQuery: `SELECT * FROM "${fullLocation}" LIMIT 100;`,
-        schema: [],
-        tags: [],
-        businessGlossaryTerms: [],
-        lineage: [],
+        updated_at: lastModified, // Using lastModified for updated_at as well
+        rawSchemaForAI: "Schema details not fetched in this overview.", // Placeholder
+        rawQuery: `SELECT * FROM "${fullLocation.replace(/"/g, '""')}" LIMIT 100;`,
+        schema: [], 
+        tags: [], 
+        businessGlossaryTerms: [], 
+        lineage: [], 
       });
     }
 
@@ -199,8 +197,9 @@ export async function GET() {
 
   } catch (error: any) {
     console.error('API error fetching Snowflake assets:', error);
+    const errorMessage = error.message || 'An unknown error occurred while fetching Snowflake assets.';
     return NextResponse.json(
-      { error: `Failed to fetch Snowflake assets: ${error.message || 'Unknown error'}` },
+      { error: `Failed to fetch Snowflake assets: ${errorMessage}` },
       { status: 500 }
     );
   } finally {
@@ -213,4 +212,3 @@ export async function GET() {
     }
   }
 }
-
