@@ -14,15 +14,15 @@ import { fetchAndParseCsv, convertToCsvString } from '@/lib/csv-utils';
 import { useToast } from "@/hooks/use-toast";
 
 const DB_MOCK_CSV_FILES = [
-  { name: 'Users (users.csv)', path: 'db_mock_data/users.csv' },
-  { name: 'Data Assets (data_assets.csv)', path: 'db_mock_data/data_assets.csv' },
-  { name: 'Column Schemas (column_schemas.csv)', path: 'db_mock_data/column_schemas.csv' },
-  { name: 'Tags (tags.csv)', path: 'db_mock_data/tags.csv' },
-  { name: 'Data Asset Tags (data_asset_tags.csv)', path: 'db_mock_data/data_asset_tags.csv' },
-  { name: 'Business Glossary Terms (business_glossary_terms.csv)', path: 'db_mock_data/business_glossary_terms.csv' },
-  { name: 'Data Asset Business Glossary Terms (data_asset_business_glossary_terms.csv)', path: 'db_mock_data/data_asset_business_glossary_terms.csv' },
-  { name: 'Data Asset Lineage (data_asset_lineage_raw.csv)', path: 'db_mock_data/data_asset_lineage_raw.csv' },
-  { name: 'Bookmarked Data Assets (bookmarked_data_assets.csv)', path: 'db_mock_data/bookmarked_data_assets.csv' },
+  { name: 'Users (users.csv)', path: '/db_mock_data/users.csv' },
+  { name: 'Data Assets (data_assets.csv)', path: '/db_mock_data/data_assets.csv' },
+  { name: 'Column Schemas (column_schemas.csv)', path: '/db_mock_data/column_schemas.csv' },
+  { name: 'Tags (tags.csv)', path: '/db_mock_data/tags.csv' },
+  { name: 'Data Asset Tags (data_asset_tags.csv)', path: '/db_mock_data/data_asset_tags.csv' },
+  { name: 'Business Glossary Terms (business_glossary_terms.csv)', path: '/db_mock_data/business_glossary_terms.csv' },
+  { name: 'Data Asset Business Glossary Terms (data_asset_business_glossary_terms.csv)', path: '/db_mock_data/data_asset_business_glossary_terms.csv' },
+  { name: 'Data Asset Lineage (data_asset_lineage_raw.csv)', path: '/db_mock_data/data_asset_lineage_raw.csv' },
+  { name: 'Bookmarked Data Assets (bookmarked_data_assets.csv)', path: '/db_mock_data/bookmarked_data_assets.csv' },
 ];
 
 
@@ -53,9 +53,9 @@ export default function AssetDataManagerPage() {
         setError(`Encountered ${result.errors.length} parsing error(s). Some data might be incorrect. Check console.`);
       }
       setCurrentCsvData(result.data);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to load or parse CSV data:', err);
-      setError('Failed to load or parse CSV data. Ensure the file exists at /public/' + csvPath + ' and is valid.');
+      setError(err.message || 'Failed to load or parse CSV data. Ensure the file exists at ' + csvPath + ' and is valid.');
       setCurrentCsvData(null);
     } finally {
       setIsLoading(false);
@@ -68,7 +68,7 @@ export default function AssetDataManagerPage() {
       return;
     }
     const selectedFile = DB_MOCK_CSV_FILES.find(f => f.path === selectedCsvPath);
-    const fileName = selectedFile ? selectedFile.name.split(' ')[0].toLowerCase() + '.csv' : 'db_mock_data.csv';
+    const fileName = selectedFile ? selectedFile.name.split(' (')[0].toLowerCase().replace(/ /g, '_') + '.csv' : 'db_mock_data.csv';
     const csvString = convertToCsvString(currentCsvData);
     
     const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
