@@ -59,37 +59,43 @@ export interface TestConnectionOutput {
   success: boolean;
   message: string;
   details?: string;
-  data?: any; // To return Snowflake current time
+  data?: any; 
 }
 
 function getErrorMessage(error: unknown): string {
   let message = 'An unknown error occurred. Check server logs for more details.';
-  if (error instanceof Error) {
-    if (error.message && error.message.trim() !== "") {
-      message = error.message.trim();
-    } else if (error.name && error.name.trim() !== "" && error.name.trim() !== "Error") {
-      message = `Error: ${error.name.trim()}`;
-    }
-    // For server-side debugging, you might want to log error.stack here
-    // console.error("Full error stack:", error.stack);
-  } else if (typeof error === 'string' && error.trim() !== "") {
-    message = error.trim();
-  } else if (typeof error === 'object' && error !== null) {
-    if ('message' in error) {
-      const errMsg = (error as { message: unknown }).message;
-      if (typeof errMsg === 'string' && errMsg.trim() !== "") {
-        message = errMsg.trim();
-      }
-    }
-    // Fallback to toString if message is not helpful
-    if (message === 'An unknown error occurred. Check server logs for more details.' && typeof (error as any).toString === 'function') {
-      const errStr = (error as any).toString();
-      if (errStr !== '[object Object]' && errStr.trim() !== "") {
-        message = errStr.trim();
-      }
-    }
+  if (error === null || error === undefined) {
+    return 'An unspecified null or undefined error occurred.';
   }
-  return message || 'An unspecified error occurred.'; // Ensure it's never empty
+  try {
+    if (error instanceof Error) {
+      if (error.message && error.message.trim() !== "") {
+        message = error.message.trim();
+      } else if (error.name && error.name.trim() !== "" && error.name.trim() !== "Error") {
+        message = `Error: ${error.name.trim()}`;
+      }
+    } else if (typeof error === 'string' && error.trim() !== "") {
+      message = error.trim();
+    } else if (typeof error === 'object') {
+      if ('message' in error) {
+        const errMsg = (error as { message: unknown }).message;
+        if (typeof errMsg === 'string' && errMsg.trim() !== "") {
+          message = errMsg.trim();
+        }
+      }
+      if (message === 'An unknown error occurred. Check server logs for more details.' && typeof (error as any).toString === 'function') {
+        const errStr = (error as any).toString();
+        if (errStr !== '[object Object]' && errStr.trim() !== "") {
+          message = errStr.trim();
+        }
+      }
+    }
+  } catch (e) {
+     // If getErrorMessage itself fails, provide a very generic message.
+     console.error("CRITICAL: getErrorMessage itself threw an error:", e);
+     return "Failed to process the error message. Check server logs for a critical failure in error handling.";
+  }
+  return message || 'An unspecified error occurred.';
 }
 
 
@@ -138,7 +144,7 @@ export async function testDatabaseConnection(input: TestConnectionInput): Promis
         connection.connect((err, conn) => {
           if (err) {
             console.error('Snowflake Connection Error (connect callback):', err);
-            reject(err); // Reject with the original error
+            reject(err); 
           } else {
             resolve();
           }
@@ -153,6 +159,10 @@ export async function testDatabaseConnection(input: TestConnectionInput): Promis
               console.error('Snowflake Query Error (execute callback):', err);
               reject(err);
             } else {
+              if (!stmt) {
+                reject(new Error("Snowflake statement is undefined after execution."));
+                return;
+              }
               resolve(stmt);
             }
           }
@@ -174,7 +184,9 @@ export async function testDatabaseConnection(input: TestConnectionInput): Promis
         });
       });
 
-      const currentTime = rows.length > 0 ? rows[0]['CURRENT_TIMESTAMP()'] : 'Not found';
+      const currentTime = rows.length > 0 && rows[0] && typeof rows[0] === 'object' && 'CURRENT_TIMESTAMP()' in rows[0] 
+                          ? rows[0]['CURRENT_TIMESTAMP()'] 
+                          : 'Not found';
 
       return { 
         success: true, 
@@ -199,17 +211,20 @@ export async function testDatabaseConnection(input: TestConnectionInput): Promis
     } finally {
       if (connection && connection.isUp()) {
         try {
-            await new Promise<void>((resolve, reject) => {
+            await new Promise<void>((resolve, reject) => { // Added reject for completeness
                 connection.destroy((err, conn) => {
                     if (err) {
-                        console.error('Failed to close Snowflake connection:', getErrorMessage(err), err);
-                        // Don't reject, just log in finally
+                        console.error('Error destroying Snowflake connection:', getErrorMessage(err), err);
+                        // Do not reject here to avoid masking a primary error from the try block
+                        // or causing an unhandled rejection if this is the only error.
+                        // The primary operation's success/failure should dictate the return.
                     }
-                    resolve();
+                    resolve(); // Always resolve to indicate attempt was made.
                 });
             });
         } catch (destroyError) {
-            console.error('Error during Snowflake connection.destroy promise:', getErrorMessage(destroyError), destroyError);
+            // This catch is for issues with the Promise wrapper itself, not destroy's callback error.
+            console.error('Error in Snowflake connection.destroy promise wrapper:', getErrorMessage(destroyError), destroyError);
         }
       }
     }
@@ -234,7 +249,9 @@ export async function testDatabaseConnection(input: TestConnectionInput): Promis
     try {
       await pgClient.connect();
       const result = await pgClient.query('SELECT CURRENT_TIMESTAMP;');
-      const currentTime = result.rows.length > 0 ? result.rows[0].current_timestamp : 'Not found';
+      const currentTime = result.rows.length > 0 && result.rows[0] && typeof result.rows[0] === 'object' && 'current_timestamp' in result.rows[0]
+                          ? result.rows[0].current_timestamp 
+                          : 'Not found';
 
       return { 
         success: true, 
@@ -256,11 +273,12 @@ export async function testDatabaseConnection(input: TestConnectionInput): Promis
         details: detailMessage
       };
     } finally {
-      if (pgClient) {
+      if (pgClient) { // pgClient might not be initialized if env vars are missing
         try {
             await pgClient.end();
         } catch (endError) {
-            console.error('Failed to close PostgreSQL connection:', getErrorMessage(endError), endError);
+            console.error('Error closing PostgreSQL connection:', getErrorMessage(endError), endError);
+            // Do not re-throw from finally
         }
       }
     }
