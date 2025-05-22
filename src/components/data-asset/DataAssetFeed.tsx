@@ -1,43 +1,119 @@
 
 "use client";
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import type { DataAsset } from '@/lib/types';
 import { DataAssetCard } from './DataAssetCard';
-import { SearchInput } from '@/components/common/SearchInput';
+import { SearchInput } from '@/components/common/SearchInput'; // Keep for local text search within results
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Info, Loader2 } from "lucide-react"; // Added Loader2
-import { useRegion } from '@/contexts/RegionContext'; // Import useRegion
+import { Info, Loader2, Filter as FilterIcon } from "lucide-react";
+import { useFilters, type FilterValues } from '@/contexts/FilterContext';
 
 interface DataAssetFeedProps {
-  initialAssets: DataAsset[];
-  // TODO: Consider passing active filters from AppShell or using a shared filter context
+  initialAssets: DataAsset[]; // Will be empty array initially
 }
 
 export function DataAssetFeed({ initialAssets }: DataAssetFeedProps) {
-  const [searchTerm, setSearchTerm] = useState('');
+  const { appliedFilters, filtersApplied } = useFilters();
+  const [displayedAssets, setDisplayedAssets] = useState<DataAsset[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const [searchTerm, setSearchTerm] = useState(''); // For local text search on displayed results
   const [sortBy, setSortBy] = useState('name-asc');
-  const { currentRegion } = useRegion(); // Get current region
 
-  // Simulate loading state based on initialAssets prop ready
-  const [isLoading, setIsLoading] = useState(true); 
-  useEffect(() => {
-    if (initialAssets && initialAssets.length > 0) {
+  const fetchData = useCallback(async (currentFilters: FilterValues) => {
+    setIsLoading(true);
+    setError(null);
+    setDisplayedAssets([]); // Clear previous assets
+
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9002';
+    let fetchedData: DataAsset[] = [];
+
+    try {
+      if (currentFilters.sources.Snowflake) {
+        const response = await fetch(`${apiUrl}/api/snowflake-assets`);
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData.error || `Failed to fetch Snowflake assets: ${response.statusText}`);
+        }
+        fetchedData = await response.json();
+      } else {
+        // Fetch from CSV assets if Snowflake is not selected,
+        // or if other sources are selected (even if Snowflake is also selected - this logic can be refined)
+        // For now, if Snowflake is not selected, fetch all CSV assets and filter client-side by source.
+        const sourceQueryParts: string[] = [];
+        if (currentFilters.sources.Hive) sourceQueryParts.push('Hive');
+        if (currentFilters.sources.ADLS) sourceQueryParts.push('ADLS');
+        
+        // If no specific CSV sources are selected, but filters are applied (e.g. by tags), fetch all CSV assets
+        // The current logic is: if Snowflake is primary, else CSVs. If specific CSV sources are selected, use them.
+        // If only tags are specified and no sources, what to do? Let's assume we fetch all CSVs then.
+        
+        let csvApiUrl = `${apiUrl}/api/csv-assets`;
+        // This logic is simplified: If any non-Snowflake source is checked, we fetch all CSVs and filter.
+        // A more robust API would accept multiple source types.
+        if (sourceQueryParts.length > 0) {
+            // For now, the /api/csv-assets returns all. We filter client-side.
+            // To filter server-side, API would need to accept multiple sources.
+        }
+
+        const response = await fetch(csvApiUrl);
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData.error || `Failed to fetch CSV assets: ${response.statusText}`);
+        }
+        let csvAssets: DataAsset[] = await response.json();
+
+        // Client-side filter by selected non-Snowflake sources if any are checked
+        if (sourceQueryParts.length > 0) {
+            csvAssets = csvAssets.filter(asset => 
+                (currentFilters.sources.Hive && asset.source === 'Hive') ||
+                (currentFilters.sources.ADLS && asset.source === 'ADLS')
+            );
+        }
+         fetchedData = csvAssets;
+      }
+
+      // Client-side tag filtering (simple "contains" for now)
+      if (currentFilters.tags) {
+        const filterTags = currentFilters.tags.toLowerCase().split(',').map(t => t.trim()).filter(t => t);
+        if (filterTags.length > 0) {
+          fetchedData = fetchedData.filter(asset =>
+            filterTags.some(ft =>
+              asset.name.toLowerCase().includes(ft) ||
+              (asset.description && asset.description.toLowerCase().includes(ft)) ||
+              asset.tags.some(tag => tag.toLowerCase().includes(ft)) ||
+              asset.location.toLowerCase().includes(ft)
+            )
+          );
+        }
+      }
+      setDisplayedAssets(fetchedData);
+
+    } catch (e: any) {
+      setError(e.message || "An error occurred while fetching data assets.");
+      setDisplayedAssets([]);
+    } finally {
       setIsLoading(false);
-    } else {
-      // If initialAssets is empty after some delay, assume loading finished or no data
-      const timer = setTimeout(() => setIsLoading(false), 1000); 
-      return () => clearTimeout(timer);
     }
-  }, [initialAssets]);
+  }, []);
 
 
-  const filteredAndSortedAssets = useMemo(() => {
-    // Make a copy to avoid mutating the prop
-    let assets = initialAssets ? [...initialAssets] : [];
+  useEffect(() => {
+    if (filtersApplied && appliedFilters) {
+      fetchData(appliedFilters);
+    } else if (!filtersApplied) {
+      setDisplayedAssets([]); // Clear assets if filters are cleared
+      setError(null);
+    }
+  }, [appliedFilters, filtersApplied, fetchData]);
 
-    // Search functionality
+
+  const locallyFilteredAndSortedAssets = useMemo(() => {
+    let assets = [...displayedAssets];
+
     if (searchTerm) {
       assets = assets.filter(asset =>
         asset.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -47,19 +123,6 @@ export function DataAssetFeed({ initialAssets }: DataAssetFeedProps) {
       );
     }
     
-    // Conceptual: If Snowflake source is active, and region is specific,
-    // one might further filter assets based on region compatibility or log usage.
-    // This part is highly dependent on how AppShell's filter state is propagated.
-    // For now, we'll just log.
-    const isSnowflakeSourceActive = false; // Placeholder - this should come from actual filter state
-    if (isSnowflakeSourceActive && currentRegion !== 'GLOBAL') {
-      console.log(`DataAssetFeed: Filtering for Snowflake source in region ${currentRegion}.`);
-      // Potentially, filter assets:
-      // assets = assets.filter(asset => asset.source === 'Snowflake' && (asset.region === currentRegion || !asset.region));
-    }
-
-
-    // Sorting functionality
     assets.sort((a, b) => {
       switch (sortBy) {
         case 'name-asc':
@@ -74,23 +137,39 @@ export function DataAssetFeed({ initialAssets }: DataAssetFeedProps) {
           return 0;
       }
     });
-
     return assets;
-  }, [initialAssets, searchTerm, sortBy, currentRegion]);
+  }, [displayedAssets, searchTerm, sortBy]);
 
-  if (isLoading && (!initialAssets || initialAssets.length === 0)) {
+
+  if (!filtersApplied && !isLoading) {
     return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-6">
-        {Array.from({ length: 6 }).map((_, index) => (
-          <div key={index} className="bg-card p-4 rounded-lg shadow-md animate-pulse">
-            <div className="h-6 bg-muted rounded w-3/4 mb-2"></div>
-            <div className="h-4 bg-muted rounded w-1/2 mb-4"></div>
-            <div className="h-16 bg-muted rounded mb-4"></div>
-            <div className="h-8 bg-muted rounded w-full"></div>
-          </div>
-        ))}
+      <Alert className="mt-6">
+        <FilterIcon className="h-4 w-4" />
+        <AlertTitle>No Filters Applied</AlertTitle>
+        <AlertDescription>
+          Please select filters from the sidebar and click "Apply Filters" to discover data assets.
+        </AlertDescription>
+      </Alert>
+    );
+  }
+  
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-10">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <p className="ml-4 text-lg text-muted-foreground">Loading data assets...</p>
       </div>
     );
+  }
+
+  if (error) {
+     return (
+        <Alert variant="destructive" className="mt-6">
+            <Info className="h-4 w-4" />
+            <AlertTitle>Error Loading Assets</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+        </Alert>
+     );
   }
 
   return (
@@ -98,7 +177,7 @@ export function DataAssetFeed({ initialAssets }: DataAssetFeedProps) {
       <div className="mb-6 flex flex-col sm:flex-row gap-4 items-center">
         <div className="flex-grow w-full sm:w-auto">
           <SearchInput
-            placeholder="Search by name, description, tags, location..."
+            placeholder="Search within results by name, description, tags..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full"
@@ -119,17 +198,17 @@ export function DataAssetFeed({ initialAssets }: DataAssetFeedProps) {
         </div>
       </div>
 
-      {filteredAndSortedAssets.length === 0 ? (
+      {locallyFilteredAndSortedAssets.length === 0 ? (
          <Alert>
             <Info className="h-4 w-4" />
             <AlertTitle>No Data Assets Found</AlertTitle>
             <AlertDescription>
-              Try adjusting your search or filter criteria.
+              No assets match your current filter criteria. Try adjusting your filters.
             </AlertDescription>
           </Alert>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-6">
-          {filteredAndSortedAssets.map(asset => (
+          {locallyFilteredAndSortedAssets.map(asset => (
             <DataAssetCard key={asset.id} asset={asset} />
           ))}
         </div>

@@ -1,8 +1,7 @@
 
 "use client";
 
-import * as React from 'react'; // Ensure React is imported
-import type { ReactNode } from 'react';
+import React, { type ReactNode, useEffect } from 'react'; // Ensured React is imported
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Home, Bookmark, Filter, Database, Cloud, Snowflake as SnowflakeIcon, Settings, UserCircle, Search as SearchIcon, FileText, BarChart2, Tags as TagsIcon, Info, ShieldCheck, FileSpreadsheet, DatabaseZap, SlidersHorizontal, Globe, PanelLeft, Sun, Moon, List } from 'lucide-react';
@@ -33,6 +32,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useDataSource, type SampleDataSourceType } from '@/contexts/DataSourceContext';
 import { useRegion, REGIONS, type Region } from '@/contexts/RegionContext';
+import { useFilters, type FilterValues } from '@/contexts/FilterContext'; // Import useFilters
 
 interface NavItemProps {
   href: string;
@@ -44,7 +44,6 @@ interface NavItemProps {
 const NavItem: React.FC<NavItemProps> = ({ href, icon, label, tooltip }) => {
   const pathname = usePathname();
   const isActive = pathname === href || (href.startsWith("/admin") && pathname.startsWith("/admin") && href.includes(pathname.split("/").pop() || ""));
-
 
   return (
     <SidebarMenuItem>
@@ -58,33 +57,49 @@ const NavItem: React.FC<NavItemProps> = ({ href, icon, label, tooltip }) => {
   );
 };
 
-
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { preferredSampleSource, setPreferredSampleSource } = useDataSource();
   const { currentRegion, setCurrentRegion } = useRegion();
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = React.useState(false);
+  const { applyFilters: applyGlobalFilters, clearFilters: clearGlobalFilters } = useFilters(); // Get applyFilters from context
 
-  React.useEffect(() => {
+  useEffect(() => {
     setMounted(true);
   }, []);
 
-  // Dummy filter state
-  const [filters, setFilters] = React.useState({
+  // Local state for UI filter selections
+  const [currentFilterSelections, setCurrentFilterSelections] = React.useState<FilterValues>({
     sources: { Hive: false, ADLS: false, Snowflake: false },
     tags: '',
   });
 
-  const handleSourceChange = (source: keyof typeof filters.sources) => {
-    setFilters(prev => ({
+  const handleSourceChange = (source: keyof FilterValues['sources']) => {
+    setCurrentFilterSelections(prev => ({
       ...prev,
       sources: { ...prev.sources, [source]: !prev.sources[source] }
     }));
   };
 
-  const isDatasetDetailPage = pathname.startsWith('/datasets/');
+  const handleTagFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setCurrentFilterSelections(prev => ({ ...prev, tags: e.target.value }));
+  };
 
+  const handleApplyFiltersClick = () => {
+    applyGlobalFilters(currentFilterSelections); // Update context with current selections
+  };
+  
+  const handleClearFiltersClick = () => {
+    setCurrentFilterSelections({
+      sources: { Hive: false, ADLS: false, Snowflake: false },
+      tags: '',
+    });
+    clearGlobalFilters();
+  };
+
+
+  const isDatasetDetailPage = pathname.startsWith('/datasets/');
 
   return (
     <SidebarProvider defaultOpen={!isDatasetDetailPage}>
@@ -116,7 +131,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                       <div key={source} className="flex items-center space-x-2">
                         <Checkbox
                           id={`filter-source-${source.toLowerCase()}`}
-                          checked={filters.sources[source]}
+                          checked={currentFilterSelections.sources[source]}
                           onCheckedChange={() => handleSourceChange(source)}
                         />
                         <Label htmlFor={`filter-source-${source.toLowerCase()}`} className="text-sm font-normal">
@@ -132,11 +147,12 @@ export function AppShell({ children }: { children: ReactNode }) {
                     id="filter-tags"
                     placeholder="e.g., customer, pii"
                     className="mt-1 h-8"
-                    value={filters.tags}
-                    onChange={(e) => setFilters(prev => ({ ...prev, tags: e.target.value }))}
+                    value={currentFilterSelections.tags}
+                    onChange={handleTagFilterChange}
                   />
                 </div>
-                <Button variant="outline" size="sm" className="w-full">Apply Filters</Button>
+                <Button onClick={handleApplyFiltersClick} size="sm" className="w-full">Apply Filters</Button>
+                <Button onClick={handleClearFiltersClick} variant="outline" size="sm" className="w-full">Clear Filters</Button>
               </div>
             </SidebarGroup>
             <Separator className="my-2 group-data-[collapsible=icon]:hidden"/>
@@ -165,7 +181,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="md:hidden">
              <SidebarTrigger />
           </div>
-          <div className="flex items-center gap-4"> {/* Grouped selectors */}
+          <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
               <SlidersHorizontal className="h-4 w-4 text-muted-foreground" />
               <Select
@@ -216,14 +232,15 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
           </div>
 
-          <div className="flex-1"></div> {/* Spacer */}
+          <div className="flex-1"></div>
 
-          <div className="flex items-center gap-2"> {/* Right-aligned items */}
-            <Input
+          <div className="flex items-center gap-2">
+            {/* Global search input in header can be removed or re-purposed if search is now part of DataAssetFeed filters */}
+            {/* <Input
               type="search"
               placeholder="Search datasets..."
               className="w-full rounded-lg bg-background pl-8 md:w-[200px] lg:w-[320px] h-9 text-sm"
-            />
+            /> */}
             <Button
               variant="outline"
               size="icon"
