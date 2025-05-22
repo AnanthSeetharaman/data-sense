@@ -9,7 +9,7 @@ import { RegionProvider } from '@/contexts/RegionContext';
 import { ThemeProvider } from 'next-themes';
 
 const inter = Inter({
-  variable: '--font-geist-sans',
+  variable: '--font-geist-sans', // Using Inter but keeping the CSS variable name for now
   subsets: ['latin'],
 });
 
@@ -24,7 +24,6 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    // Ensure no whitespace between <html> and <body> tags
     <html lang="en" className={inter.variable} suppressHydrationWarning><body className="antialiased">
         <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
           <DataSourceProvider>
