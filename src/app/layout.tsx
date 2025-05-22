@@ -24,8 +24,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={inter.variable} suppressHydrationWarning>
-      <body className="antialiased">
+    // Ensure no whitespace between <html> and <body> tags
+    <html lang="en" className={inter.variable} suppressHydrationWarning><body className="antialiased">
         <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
           <DataSourceProvider>
             <RegionProvider>
@@ -34,7 +34,6 @@ export default function RootLayout({
           </DataSourceProvider>
           <Toaster />
         </ThemeProvider>
-      </body>
-    </html>
+      </body></html>
   );
 }
