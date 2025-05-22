@@ -56,6 +56,9 @@ export function DatasetDetailView({ initialAsset, assetId }: DatasetDetailViewPr
   const [showSampleDataWarningDialog, setShowSampleDataWarningDialog] = useState(false);
   const [pendingTabChange, setPendingTabChange] = useState<string | null>(null);
 
+  const [clientFormattedLastModified, setClientFormattedLastModified] = useState<string | null>(null);
+  const [clientFormattedCreatedAt, setClientFormattedCreatedAt] = useState<string | null>(null);
+
   const apiAssetIdParts = assetId.split('.');
   const apiBaseUrl = `/api/snowflake-assets`;
 
@@ -122,8 +125,27 @@ export function DatasetDetailView({ initialAsset, assetId }: DatasetDetailViewPr
       setLineageData(null);
       setLineageError(null);
       setActiveTab('overview'); 
+      setClientFormattedLastModified(null);
+      setClientFormattedCreatedAt(null);
     }
   }, [initialAsset, asset?.id]);
+
+  useEffect(() => {
+    // This effect runs only on the client, after hydration
+    if (typeof window !== 'undefined') {
+      if (asset?.lastModified) {
+        setClientFormattedLastModified(format(new Date(asset.lastModified), 'PPP p'));
+      } else {
+        setClientFormattedLastModified(null);
+      }
+      if (asset?.created_at) {
+        setClientFormattedCreatedAt(format(new Date(asset.created_at), 'PPP p'));
+      } else {
+        setClientFormattedCreatedAt(null);
+      }
+    }
+  }, [asset?.lastModified, asset?.created_at]);
+
 
   useEffect(() => {
     if (activeTab === 'sample' && !sampleData && !sampleDataLoading && !sampleDataError && asset) {
@@ -288,8 +310,18 @@ export function DatasetDetailView({ initialAsset, assetId }: DatasetDetailViewPr
                   <li><span className="font-medium">Columns:</span> {asset.columnCount}</li>
                   {asset.sampleRecordCount != null && <li><span className="font-medium">Total Records (approx):</span> {asset.sampleRecordCount.toLocaleString()}</li>}
                   {asset.owner && <li><span className="font-medium">Owner:</span> {asset.owner}</li>}
-                  {asset.lastModified && <li><span className="font-medium">Last Modified:</span> {format(new Date(asset.lastModified), 'PPP p')}</li>}
-                  {asset.created_at && <li><span className="font-medium">Created At:</span> {format(new Date(asset.created_at), 'PPP p')}</li>}
+                  {asset.lastModified && (
+                    <li>
+                      <span className="font-medium">Last Modified:</span>{' '}
+                      {clientFormattedLastModified || asset.lastModified}
+                    </li>
+                  )}
+                  {asset.created_at && (
+                    <li>
+                      <span className="font-medium">Created At:</span>{' '}
+                      {clientFormattedCreatedAt || asset.created_at}
+                    </li>
+                  )}
                   {asset.isSensitive && <li className="flex items-center"><Lock className="h-4 w-4 mr-1 text-destructive" /> <span className="font-medium text-destructive">Contains Sensitive Data</span></li>}
                 </ul>
               </div>
@@ -495,3 +527,4 @@ export function DatasetDetailView({ initialAsset, assetId }: DatasetDetailViewPr
     </div>
   );
 }
+
