@@ -60,6 +60,7 @@ export interface TestConnectionOutput {
   message: string;
   details?: string;
   data?: any;
+  logs?: string[]; // Added to capture action-specific logs
 }
 
 function getErrorMessage(error: unknown): string {
@@ -107,7 +108,19 @@ function getErrorMessage(error: unknown): string {
 
 
 export async function testDatabaseConnection(input: TestConnectionInput): Promise<TestConnectionOutput> {
-  console.log(`[ACTION_LOG] Attempting to test connection for ${input.sourceType} with input:`, JSON.stringify(input, null, 2));
+  const capturedLogs: string[] = [];
+  const log = (message: string, type: 'info' | 'warn' | 'error' = 'info') => {
+    const timestamp = new Date().toISOString();
+    const logEntry = `[${timestamp}] [${type.toUpperCase()}] ${message}`;
+    capturedLogs.push(logEntry);
+    switch (type) {
+        case 'info': console.log(message); break;
+        case 'warn': console.warn(message); break;
+        case 'error': console.error(message); break;
+    }
+  };
+
+  log(`[ACTION_LOG] Attempting to test connection for ${input.sourceType} with input: ${JSON.stringify(input, null, 2)}`);
 
   if (input.sourceType === 'Snowflake') {
     const account = process.env.SNOWFLAKE_ACCOUNT;
@@ -118,47 +131,48 @@ export async function testDatabaseConnection(input: TestConnectionInput): Promis
     const db = process.env.SNOWFLAKE_DATABASE;
     const schema = process.env.SNOWFLAKE_SCHEMA;
 
-
-    console.log("[SF_ACTION_LOG] Snowflake .env values:", {
-        account: account ? "******" : "NOT SET",
-        username: username ? "******" : "NOT SET",
-        password: password ? "****** (present/empty)" : "NOT SET",
-        warehouse: warehouse ? "******" : "NOT SET",
-        authenticatorEnv,
-        db: db ? db : "NOT SET (Optional for test)",
-        schema: schema ? schema : "NOT SET (Optional for test)"
-    });
+    log(`[SF_ACTION_LOG] Snowflake .env values check: account=${account ? "present" : "NOT SET"}, username=${username ? "present" : "NOT SET"}, password=${password ? "present/empty" : "NOT SET"}, warehouse=${warehouse ? "present" : "NOT SET"}, authenticator=${authenticatorEnv || "NOT SET"}, db=${db || "NOT SET"}, schema=${schema || "NOT SET"}`);
 
     if (!account || !username) {
+      const msg = "Required Snowflake environment variables (SNOWFLAKE_ACCOUNT, SNOWFLAKE_USERNAME) are not set in .env file.";
+      log(msg, 'error');
       return {
         success: false,
         message: "Snowflake connection failed.",
-        details: "Required Snowflake environment variables (SNOWFLAKE_ACCOUNT, SNOWFLAKE_USERNAME) are not set in .env file."
+        details: msg,
+        logs: capturedLogs
       };
     }
 
     if (authenticatorEnv === 'EXTERNALBROWSER') {
-      console.warn("[SF_ACTION_LOG] Snowflake EXTERNALBROWSER authenticator is configured. This method is not supported for non-interactive server-side connections in this prototype.");
+      const msg = "The 'externalbrowser' authenticator method is not supported for automated server-side connections in this test. Please use username/password or key-pair authentication for server-side tests, or adapt the connection logic if using a different server-compatible SSO method.";
+      log(`[SF_ACTION_LOG] Snowflake EXTERNALBROWSER authenticator is configured. ${msg}`, 'warn');
       return {
         success: false,
         message: "Snowflake connection configuration uses EXTERNALBROWSER.",
-        details: "The 'externalbrowser' authenticator method is not supported for automated server-side connections in this test. Please use username/password or key-pair authentication for server-side tests, or adapt the connection logic if using a different server-compatible SSO method."
+        details: msg,
+        logs: capturedLogs
       };
     }
 
-    // If not using EXTERNALBROWSER, password and warehouse are required for default username/password auth
-    if (!password) { // Password can be an empty string if explicitly set that way, though unusual
+    if (!password) { 
+      const msg = "SNOWFLAKE_PASSWORD environment variable is not set. It is required for username/password authentication (when SNOWFLAKE_AUTHENTICATOR is not EXTERNALBROWSER).";
+      log(msg, 'error');
       return {
         success: false,
         message: "Snowflake connection failed.",
-        details: "SNOWFLAKE_PASSWORD environment variable is not set. It is required for username/password authentication (when SNOWFLAKE_AUTHENTICATOR is not EXTERNALBROWSER)."
+        details: msg,
+        logs: capturedLogs
       };
     }
     if (!warehouse) {
+      const msg = "SNOWFLAKE_WAREHOUSE environment variable is not set. A warehouse is required to execute queries.";
+      log(msg, 'error');
       return {
         success: false,
         message: "Snowflake connection failed.",
-        details: "SNOWFLAKE_WAREHOUSE environment variable is not set. A warehouse is required to execute queries."
+        details: msg,
+        logs: capturedLogs
       };
     }
 
@@ -171,128 +185,143 @@ export async function testDatabaseConnection(input: TestConnectionInput): Promis
     if (db) connectionOptions.database = db;
     if (schema) connectionOptions.schema = schema;
     
-    if (authenticatorEnv && authenticatorEnv !== 'SNOWFLAKE') { // SNOWFLAKE is default for username/password
+    if (authenticatorEnv && authenticatorEnv !== 'SNOWFLAKE') { 
         connectionOptions.authenticator = authenticatorEnv;
     }
 
     if (input.region && input.region.toUpperCase() !== 'GLOBAL' && account && !account.includes('.')) {
       connectionOptions.region = input.region.toLowerCase();
-      console.log(`[SF_ACTION_LOG] Using region: ${connectionOptions.region} for Snowflake connection`);
+      log(`[SF_ACTION_LOG] Using region: ${connectionOptions.region} for Snowflake connection`);
     } else if (account && account.includes('.')) {
-      console.log(`[SF_ACTION_LOG] Snowflake account identifier '${account}' seems to include region information. Not explicitly setting region option.`);
+      log(`[SF_ACTION_LOG] Snowflake account identifier '${account}' seems to include region information. Not explicitly setting region option.`);
     }
     
-    console.log("[SF_ACTION_LOG] Attempting Snowflake connection with options:", JSON.stringify(connectionOptions, (key, value) => key === 'password' ? '********' : value));
+    log(`[SF_ACTION_LOG] Attempting Snowflake connection with options: ${JSON.stringify(connectionOptions, (key, value) => key === 'password' ? '********' : value)}`);
     let connection: Snowflake.Connection | null = null;
 
     try {
       try {
         connection = Snowflake.createConnection(connectionOptions);
-        console.log("[SF_ACTION_LOG] Snowflake.createConnection call successful.");
+        log("[SF_ACTION_LOG] Snowflake.createConnection call successful.");
       } catch (createError: unknown) {
-        console.error('[SF_ACTION_LOG] Snowflake.createConnection Error:', createError);
         const detailMessage = getErrorMessage(createError);
+        log(`[SF_ACTION_LOG] Snowflake.createConnection Error: ${detailMessage}`, 'error');
         return {
           success: false,
           message: "Snowflake connection failed during creation.",
-          details: `Error creating connection object: ${detailMessage}`
+          details: `Error creating connection object: ${detailMessage}`,
+          logs: capturedLogs
         };
       }
 
       await new Promise<void>((resolve, reject) => {
         if (!connection) {
-          console.error("[SF_ACTION_LOG] CRITICAL: Connection object is null before calling connection.connect.");
-          reject(new Error("Snowflake connection object is null before connect."));
-          return;
+           const errMsg = "[SF_ACTION_LOG] CRITICAL: Connection object is null before calling connection.connect.";
+           log(errMsg, 'error');
+           reject(new Error("Snowflake connection object is null before connect."));
+           return;
         }
-        console.log("[SF_ACTION_LOG] Calling connection.connect()...");
+        log("[SF_ACTION_LOG] Calling connection.connect()...");
         connection.connect((err, conn) => {
           if (err) {
-            console.error('[SF_ACTION_LOG] Snowflake Connection Error (connect callback):', getErrorMessage(err), err);
+            const errMsg = getErrorMessage(err);
+            log(`[SF_ACTION_LOG] Snowflake Connection Error (connect callback): ${errMsg}`, 'error');
+            console.error(err); // Also log full error object to server console
             reject(err);
           } else {
-            console.log('[SF_ACTION_LOG] Snowflake connect callback successful. Conn ID:', conn.getId());
+            log(`[SF_ACTION_LOG] Snowflake connect callback successful. Conn ID: ${conn.getId()}`);
             resolve();
           }
         });
       });
 
-      console.log("[SF_ACTION_LOG] Connection.connect promise resolved. Preparing to execute query.");
+      log("[SF_ACTION_LOG] Connection.connect promise resolved. Preparing to execute query.");
       
       const statement = await new Promise<Snowflake.Statement>((resolve, reject) => {
         if (!connection) {
-           console.error("[SF_ACTION_LOG] CRITICAL: Connection object is null before calling connection.execute.");
+           const errMsg = "[SF_ACTION_LOG] CRITICAL: Connection object is null before calling connection.execute.";
+           log(errMsg, 'error');
            reject(new Error("Snowflake connection object is null before execute."));
            return;
         }
-        console.log("[SF_ACTION_LOG] Calling connection.execute({ sqlText: 'SELECT CURRENT_TIMESTAMP();' })");
+        log("[SF_ACTION_LOG] Calling connection.execute({ sqlText: 'SELECT CURRENT_TIMESTAMP();' })");
         connection.execute({
           sqlText: 'SELECT CURRENT_TIMESTAMP();',
-          complete: (err, stmt, rows_from_execute) => { // Renamed `rows` parameter
+          complete: (err, stmt, rows_from_execute) => { 
             if (err) {
-              console.error('[SF_ACTION_LOG] Snowflake Query Error (execute complete callback):', getErrorMessage(err), err);
+              const errMsg = getErrorMessage(err);
+              log(`[SF_ACTION_LOG] Snowflake Query Error (execute complete callback): ${errMsg}`, 'error');
+              console.error(err); // Also log full error object to server console
               reject(err);
             } else {
               if (!stmt) {
-                console.error("[SF_ACTION_LOG] Snowflake execute callback: Statement object (stmt) is undefined/null.");
+                const errMsg = "[SF_ACTION_LOG] Snowflake execute callback: Statement object (stmt) is undefined/null.";
+                log(errMsg, 'error');
                 reject(new Error("Snowflake statement is undefined after execution."));
                 return;
               }
-              console.log('[SF_ACTION_LOG] Snowflake execute callback successful. Statement ID:', stmt.getStatementId());
-              console.log('[SF_ACTION_LOG] Rows returned directly by execute (if any, typically undefined/empty for SELECT):', rows_from_execute);
+              log(`[SF_ACTION_LOG] Snowflake execute callback successful. Statement ID: ${stmt.getStatementId()}`);
+              log(`[SF_ACTION_LOG] Rows returned directly by execute (if any, typically undefined/empty for SELECT): ${JSON.stringify(rows_from_execute)}`);
               resolve(stmt);
             }
           }
         });
       });
 
-      console.log("[SF_ACTION_LOG] statement promise resolved. Statement object should be available.");
+      log("[SF_ACTION_LOG] statement promise resolved. Statement object should be available.");
       if (!statement) {
-          console.error("[SF_ACTION_LOG] CRITICAL: Statement object is null/undefined after execute promise.");
-          // This path should ideally not be reached if the promise was rejected correctly above.
-          return { success: false, message: "Snowflake operation failed.", details: "Failed to obtain statement object from Snowflake execute." };
+          const errMsg = "[SF_ACTION_LOG] CRITICAL: Statement object is null/undefined after execute promise.";
+          log(errMsg, 'error');
+          return { success: false, message: "Snowflake operation failed.", details: "Failed to obtain statement object from Snowflake execute.", logs: capturedLogs };
       }
 
       const queryResultRows = await new Promise<any[]>((resolve, reject) => {
-        console.log("[SF_ACTION_LOG] Calling statement.streamRows()...");
+        log("[SF_ACTION_LOG] Calling statement.streamRows()...");
         try {
             const stream = statement.streamRows();
             const rowData: any[] = [];
             
             stream.on('error', (err_stream) => {
-              console.error('[SF_ACTION_LOG] Snowflake Stream Error (stream.on("error")):', getErrorMessage(err_stream), err_stream);
+              const errMsg = getErrorMessage(err_stream);
+              log(`[SF_ACTION_LOG] Snowflake Stream Error (stream.on("error")): ${errMsg}`, 'error');
+              console.error(err_stream);
               reject(err_stream);
             });
             
             stream.on('data', (row) => {
-              console.log("[SF_ACTION_LOG] Snowflake stream.on('data'): received row:", JSON.stringify(row));
+              log(`[SF_ACTION_LOG] Snowflake stream.on('data'): received row: ${JSON.stringify(row)}`);
               rowData.push(row);
             });
             
             stream.on('end', () => {
-              console.log('[SF_ACTION_LOG] Snowflake stream.on("end"): streamRows ended. Collected row count:', rowData.length);
+              log(`[SF_ACTION_LOG] Snowflake stream.on("end"): streamRows ended. Collected row count: ${rowData.length}`);
               if (rowData.length === 0) {
-                console.warn("[SF_ACTION_LOG] streamRows ended with 0 rows. Query might have returned no data or failed silently before/during streaming (e.g., warehouse issue).");
+                log("[SF_ACTION_LOG] streamRows ended with 0 rows. Query might have returned no data or failed silently before/during streaming (e.g., warehouse issue).", 'warn');
               }
               resolve(rowData);
             });
         } catch (streamSetupError) {
-            console.error('[SF_ACTION_LOG] Error setting up statement.streamRows():', getErrorMessage(streamSetupError), streamSetupError);
+            const errMsg = getErrorMessage(streamSetupError);
+            log(`[SF_ACTION_LOG] Error setting up statement.streamRows(): ${errMsg}`, 'error');
+            console.error(streamSetupError);
             reject(streamSetupError);
         }
       });
       
-      console.log("[SF_ACTION_LOG] queryResultRows promise resolved. Final row count:", queryResultRows.length);
+      log(`[SF_ACTION_LOG] queryResultRows promise resolved. Final row count: ${queryResultRows.length}`);
 
       const currentTime = queryResultRows.length > 0 && queryResultRows[0] && typeof queryResultRows[0] === 'object' && 'CURRENT_TIMESTAMP()' in queryResultRows[0]
                           ? queryResultRows[0]['CURRENT_TIMESTAMP()']
                           : 'Current timestamp not found in query result';
 
+      const successMsg = `Snowflake connection to account ${account} successful.`;
+      log(successMsg);
       return {
         success: true,
-        message: `Snowflake connection to account ${account} successful.`,
+        message: successMsg,
         details: `Current Snowflake time: ${currentTime instanceof Date ? currentTime.toISOString() : String(currentTime)}`,
-        data: { snowflakeTime: currentTime instanceof Date ? currentTime.toISOString() : String(currentTime) }
+        data: { snowflakeTime: currentTime instanceof Date ? currentTime.toISOString() : String(currentTime) },
+        logs: capturedLogs
       };
 
     } catch (error: unknown) {
@@ -300,35 +329,41 @@ export async function testDatabaseConnection(input: TestConnectionInput): Promis
       try {
         detailMessage = getErrorMessage(error);
       } catch (e_getMsg) {
-        console.error("CRITICAL: getErrorMessage failed during Snowflake error handling:", e_getMsg, "Original error:", error);
+        log(`CRITICAL: getErrorMessage failed during Snowflake error handling: ${e_getMsg}. Original error: ${error}`, 'error');
       }
-      console.error("[SF_ACTION_LOG] Snowflake operation error (outer catch):", detailMessage, error);
+      log(`[SF_ACTION_LOG] Snowflake operation error (outer catch): ${detailMessage}`, 'error');
+      console.error(error); // Also log full error object
       return {
         success: false,
         message: "Snowflake operation failed.",
-        details: detailMessage
+        details: detailMessage,
+        logs: capturedLogs
       };
     } finally {
       if (connection && connection.isUp()) {
-        console.log("[SF_ACTION_LOG] Attempting to destroy Snowflake connection.");
+        log("[SF_ACTION_LOG] Attempting to destroy Snowflake connection.");
         try {
             await new Promise<void>((resolve, reject) => { 
                 connection.destroy((err, conn) => {
                     if (err) {
-                        console.error('[SF_ACTION_LOG] Error destroying Snowflake connection:', getErrorMessage(err), err);
+                        const errMsg = getErrorMessage(err);
+                        log(`[SF_ACTION_LOG] Error destroying Snowflake connection: ${errMsg}`, 'error');
+                        console.error(err);
                     } else {
-                        console.log('[SF_ACTION_LOG] Snowflake connection destroyed successfully.');
+                        log('[SF_ACTION_LOG] Snowflake connection destroyed successfully.');
                     }
                     resolve(); 
                 });
             });
         } catch (destroyError) {
-            console.error('[SF_ACTION_LOG] Error in Snowflake connection.destroy promise wrapper:', getErrorMessage(destroyError), destroyError);
+            const errMsg = getErrorMessage(destroyError);
+            log(`[SF_ACTION_LOG] Error in Snowflake connection.destroy promise wrapper: ${errMsg}`, 'error');
+            console.error(destroyError);
         }
       } else if (connection) {
-        console.log("[SF_ACTION_LOG] Snowflake connection was not up, no destroy needed or destroy failed prior.");
+        log("[SF_ACTION_LOG] Snowflake connection was not up, no destroy needed or destroy failed prior.");
       } else {
-        console.log("[SF_ACTION_LOG] No Snowflake connection object to destroy (was null).");
+        log("[SF_ACTION_LOG] No Snowflake connection object to destroy (was null).");
       }
     }
 
@@ -339,57 +374,72 @@ export async function testDatabaseConnection(input: TestConnectionInput): Promis
     const database = process.env.POSTGRES_DATABASE;
     const port = process.env.POSTGRES_PORT ? parseInt(process.env.POSTGRES_PORT, 10) : 5432;
 
+    log(`[PG_ACTION_LOG] PostgreSQL .env values check: host=${host ? "present" : "NOT SET"}, user=${user ? "present" : "NOT SET"}, password=${password ? "present/empty" : "NOT SET"}, database=${database ? "present" : "NOT SET"}, port=${port}`);
+
     if (!host || !user || !password || !database) {
+       const msg = "Required PostgreSQL environment variables (POSTGRES_HOST, POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DATABASE) are not set in .env file.";
+       log(msg, 'error');
        return {
         success: false,
         message: "PostgreSQL connection failed.",
-        details: "Required PostgreSQL environment variables (POSTGRES_HOST, POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DATABASE) are not set in .env file."
+        details: msg,
+        logs: capturedLogs
       };
     }
     
     const pgClient = new PgClient({ host, user, password, database, port });
 
     try {
-      console.log("[PG_ACTION_LOG] Attempting PostgreSQL connection...");
+      log("[PG_ACTION_LOG] Attempting PostgreSQL connection...");
       await pgClient.connect();
-      console.log("[PG_ACTION_LOG] PostgreSQL connected. Executing query 'SELECT CURRENT_TIMESTAMP;'");
+      log("[PG_ACTION_LOG] PostgreSQL connected. Executing query 'SELECT CURRENT_TIMESTAMP;'");
       const result = await pgClient.query('SELECT CURRENT_TIMESTAMP;');
-      console.log("[PG_ACTION_LOG] PostgreSQL query successful.");
+      log("[PG_ACTION_LOG] PostgreSQL query successful.");
       const currentTime = result.rows.length > 0 && result.rows[0] && typeof result.rows[0] === 'object' && 'current_timestamp' in result.rows[0]
                           ? result.rows[0].current_timestamp
                           : 'Current timestamp not found';
-
+      
+      const successMsg = `PostgreSQL connection to ${host} successful.`;
+      log(successMsg);
       return {
         success: true,
-        message: `PostgreSQL connection to ${host} successful.`,
+        message: successMsg,
         details: `Current PostgreSQL time: ${currentTime instanceof Date ? currentTime.toISOString() : String(currentTime)}`,
-        data: { postgresTime: currentTime instanceof Date ? currentTime.toISOString() : String(currentTime) }
+        data: { postgresTime: currentTime instanceof Date ? currentTime.toISOString() : String(currentTime) },
+        logs: capturedLogs
       };
     } catch (error: unknown) {
       let detailMessage = 'Failed during PostgreSQL operation. Check server logs.';
       try {
         detailMessage = getErrorMessage(error);
       } catch (e_getMsg) {
-        console.error("CRITICAL: getErrorMessage failed during PostgreSQL error handling:", e_getMsg, "Original error:", error);
+        log(`CRITICAL: getErrorMessage failed during PostgreSQL error handling: ${e_getMsg}. Original error: ${error}`, 'error');
       }
-      console.error("[PG_ACTION_LOG] PostgreSQL connection or query error (outer catch):", detailMessage, error);
+      log(`[PG_ACTION_LOG] PostgreSQL connection or query error (outer catch): ${detailMessage}`, 'error');
+      console.error(error);
       return {
         success: false,
         message: "PostgreSQL connection test failed.",
-        details: detailMessage
+        details: detailMessage,
+        logs: capturedLogs
       };
     } finally {
       if (pgClient) { 
-        console.log("[PG_ACTION_LOG] Attempting to close PostgreSQL connection.");
+        log("[PG_ACTION_LOG] Attempting to close PostgreSQL connection.");
         try {
             await pgClient.end();
-            console.log("[PG_ACTION_LOG] PostgreSQL connection closed.");
+            log("[PG_ACTION_LOG] PostgreSQL connection closed.");
         } catch (endError) {
-            console.error('[PG_ACTION_LOG] Error closing PostgreSQL connection:', getErrorMessage(endError), endError);
+            const errMsg = getErrorMessage(endError);
+            log(`[PG_ACTION_LOG] Error closing PostgreSQL connection: ${errMsg}`, 'error');
+            console.error(endError);
         }
       }
     }
   }
-
-  return { success: false, message: `Unsupported source type: ${input.sourceType}`, details: "This source type is not configured for connection testing." };
+  const unsupportedMsg = `Unsupported source type: ${input.sourceType}`;
+  log(unsupportedMsg, 'error');
+  return { success: false, message: unsupportedMsg, details: "This source type is not configured for connection testing.", logs: capturedLogs };
 }
+
+    
