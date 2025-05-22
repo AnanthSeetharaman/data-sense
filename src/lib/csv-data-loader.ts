@@ -1,19 +1,57 @@
 
-import type { 
-  DataAsset, 
-  DataAssetCsv, 
-  ColumnSchema, 
-  TagCsv, 
-  DataAssetTagCsv,
-  BusinessGlossaryTermCsv,
-  DataAssetBusinessGlossaryTermCsv,
+import type {
+  DataAsset,
+  DataAssetCsv,
+  ColumnSchema,
+  // TagCsv, // Changed to Tag
+  // DataAssetTagCsv, // No longer directly used here, joined in map
+  // BusinessGlossaryTermCsv, // Changed to BusinessGlossaryTerm
+  // DataAssetBusinessGlossaryTermCsv, // No longer directly used here
   RawLineageEntry,
   User,
-  BookmarkedDataAssetCsv
+  BookmarkedDataAssetCsv,
+  Tag, // Updated type
+  BusinessGlossaryTerm // Updated type
 } from './types';
-import { fetchAndParseCsv, type ParseCsvResult } from './csv-utils';
+// Removed fetchAndParseCsv import, ParseCsvResult is now defined locally for this context
+// import { fetchAndParseCsv, type ParseCsvResult } from './csv-utils';
 
-const DB_MOCK_DATA_PATH = '/db_mock_data';
+import fs from 'fs';
+import path from 'path';
+import Papa from 'papaparse';
+
+const DB_MOCK_DATA_PATH = '/db_mock_data'; // Relative to /public directory
+
+// Local ParseCsvResult type for this server-side loader
+interface ParseCsvResult {
+  data: Record<string, any>[];
+  errors: Papa.ParseError[];
+  meta: Papa.ParseMeta;
+}
+
+// Helper to read file from /public directory and parse it
+function readAndParseCsv(filePathInPublic: string): ParseCsvResult {
+  const fullPath = path.join(process.cwd(), 'public', filePathInPublic);
+  try {
+    const fileContent = fs.readFileSync(fullPath, 'utf-8');
+    const results = Papa.parse(fileContent, {
+      header: true,
+      skipEmptyLines: true,
+      dynamicTyping: true,
+    });
+    return {
+      data: results.data as Record<string, any>[],
+      errors: results.errors,
+      meta: results.meta,
+    };
+  } catch (error) {
+    console.error(`Failed to read or parse CSV file at ${fullPath}:`, error);
+    // Return an empty structure or throw, depending on desired error handling
+    // For now, returning empty to allow partial loading if some files are problematic
+    return { data: [], errors: [error as Papa.ParseError], meta: {} as Papa.ParseMeta };
+  }
+}
+
 
 // Helper to safely parse JSON from a string, returning null on error
 function safeJsonParse<T>(jsonString: string | undefined | null): T | null {
@@ -30,10 +68,10 @@ function safeJsonParse<T>(jsonString: string | undefined | null): T | null {
 let cachedDb: {
   dataAssetsCsv?: DataAssetCsv[];
   columnSchemas?: ColumnSchema[];
-  tagsCsv?: TagCsv[];
-  dataAssetTagsCsv?: DataAssetTagCsv[];
-  businessGlossaryTermsCsv?: BusinessGlossaryTermCsv[];
-  dataAssetBusinessGlossaryTermsCsv?: DataAssetBusinessGlossaryTermCsv[];
+  tags?: Tag[]; // Changed from TagCsv
+  dataAssetTagsCsv?: { data_asset_id: string; tag_id: number }[]; // Type for join table
+  businessGlossaryTerms?: BusinessGlossaryTerm[]; // Changed from BusinessGlossaryTermCsv
+  dataAssetBusinessGlossaryTermsCsv?: { data_asset_id: string; term_id: number }[]; // Type for join table
   lineageEntries?: RawLineageEntry[];
   users?: User[];
   bookmarks?: BookmarkedDataAssetCsv[];
@@ -44,52 +82,54 @@ async function loadAllCsvData() {
     return cachedDb;
   }
 
+  // Use a try-catch block for the overall loading process
   try {
-    const [
-      dataAssetsResult,
-      columnSchemasResult,
-      tagsResult,
-      dataAssetTagsResult,
-      glossaryTermsResult,
-      dataAssetGlossaryTermsResult,
-      lineageResult,
-      usersResult,
-      bookmarksResult,
-    ] = await Promise.all([
-      fetchAndParseCsv(`${DB_MOCK_DATA_PATH}/data_assets.csv`),
-      fetchAndParseCsv(`${DB_MOCK_DATA_PATH}/column_schemas.csv`),
-      fetchAndParseCsv(`${DB_MOCK_DATA_PATH}/tags.csv`),
-      fetchAndParseCsv(`${DB_MOCK_DATA_PATH}/data_asset_tags.csv`),
-      fetchAndParseCsv(`${DB_MOCK_DATA_PATH}/business_glossary_terms.csv`),
-      fetchAndParseCsv(`${DB_MOCK_DATA_PATH}/data_asset_business_glossary_terms.csv`),
-      fetchAndParseCsv(`${DB_MOCK_DATA_PATH}/data_asset_lineage_raw.csv`),
-      fetchAndParseCsv(`${DB_MOCK_DATA_PATH}/users.csv`),
-      fetchAndParseCsv(`${DB_MOCK_DATA_PATH}/bookmarked_data_assets.csv`),
-    ]);
+    const dataAssetsResult = readAndParseCsv(`${DB_MOCK_DATA_PATH}/data_assets.csv`);
+    const columnSchemasResult = readAndParseCsv(`${DB_MOCK_DATA_PATH}/column_schemas.csv`);
+    const tagsResult = readAndParseCsv(`${DB_MOCK_DATA_PATH}/tags.csv`);
+    const dataAssetTagsResult = readAndParseCsv(`${DB_MOCK_DATA_PATH}/data_asset_tags.csv`);
+    const glossaryTermsResult = readAndParseCsv(`${DB_MOCK_DATA_PATH}/business_glossary_terms.csv`);
+    const dataAssetGlossaryTermsResult = readAndParseCsv(`${DB_MOCK_DATA_PATH}/data_asset_business_glossary_terms.csv`);
+    const lineageResult = readAndParseCsv(`${DB_MOCK_DATA_PATH}/data_asset_lineage_raw.csv`);
+    const usersResult = readAndParseCsv(`${DB_MOCK_DATA_PATH}/users.csv`);
+    const bookmarksResult = readAndParseCsv(`${DB_MOCK_DATA_PATH}/bookmarked_data_assets.csv`);
 
-    cachedDb = {
-      dataAssetsCsv: dataAssetsResult.data as DataAssetCsv[],
-      columnSchemas: columnSchemasResult.data as ColumnSchema[],
-      tagsCsv: tagsResult.data as TagCsv[],
-      dataAssetTagsCsv: dataAssetTagsResult.data as DataAssetTagCsv[],
-      businessGlossaryTermsCsv: glossaryTermsResult.data as BusinessGlossaryTermCsv[],
-      dataAssetBusinessGlossaryTermsCsv: dataAssetGlossaryTermsResult.data as DataAssetBusinessGlossaryTermCsv[],
-      lineageEntries: lineageResult.data as RawLineageEntry[],
-      users: usersResult.data as User[],
-      bookmarks: bookmarksResult.data as BookmarkedDataAssetCsv[],
+    // Basic error check for each parsed file
+    const results = {
+        dataAssetsCsv: dataAssetsResult.data as DataAssetCsv[],
+        columnSchemas: columnSchemasResult.data as ColumnSchema[],
+        tags: tagsResult.data as Tag[],
+        dataAssetTagsCsv: dataAssetTagsResult.data as { data_asset_id: string; tag_id: number }[],
+        businessGlossaryTerms: glossaryTermsResult.data as BusinessGlossaryTerm[],
+        dataAssetBusinessGlossaryTermsCsv: dataAssetGlossaryTermsResult.data as { data_asset_id: string; term_id: number }[],
+        lineageEntries: lineageResult.data as RawLineageEntry[],
+        users: usersResult.data as User[],
+        bookmarks: bookmarksResult.data as BookmarkedDataAssetCsv[],
     };
+    
+    // Check for major parsing errors (e.g., file not found, completely malformed)
+    if (dataAssetsResult.errors.some(e => e.code !== 'TooFewFields' && e.code !== 'TooManyFields' && e.code !== 'UndetectableDelimiter')) { // Allow minor structural issues
+        throw new Error(`Critical error parsing data_assets.csv: ${JSON.stringify(dataAssetsResult.errors)}`);
+    }
+    // Add similar checks for other critical CSVs if necessary
+
+    cachedDb = results;
     return cachedDb;
+
   } catch (error) {
     console.error("Error loading one or more CSV data files:", error);
-    cachedDb = {}; // Set to empty to avoid retrying indefinitely on partial success / error
-    return cachedDb; // Return empty object or throw? For now, return empty.
+    cachedDb = {}; 
+    return cachedDb; 
   }
 }
 
 
 export async function getAllDataAssets(): Promise<DataAsset[]> {
   const db = await loadAllCsvData();
-  if (!db || !db.dataAssetsCsv) return [];
+  if (!db || !db.dataAssetsCsv || db.dataAssetsCsv.length === 0) {
+    console.warn("No data assets loaded or dataAssetsCsv is empty.");
+    return [];
+  }
 
   return db.dataAssetsCsv.map(assetCsv => {
     const schema = db.columnSchemas?.filter(cs => cs.data_asset_id === assetCsv.id) || [];
@@ -97,14 +137,14 @@ export async function getAllDataAssets(): Promise<DataAsset[]> {
     const assetTagIds = db.dataAssetTagsCsv
       ?.filter(dat => dat.data_asset_id === assetCsv.id)
       .map(dat => dat.tag_id) || [];
-    const tags = db.tagsCsv
+    const tags = db.tags
       ?.filter(tag => assetTagIds.includes(tag.id))
       .map(tag => tag.name) || [];
 
     const assetTermIds = db.dataAssetBusinessGlossaryTermsCsv
       ?.filter(dabt => dabt.data_asset_id === assetCsv.id)
       .map(dabt => dabt.term_id) || [];
-    const businessGlossaryTerms = db.businessGlossaryTermsCsv
+    const businessGlossaryTerms = db.businessGlossaryTerms
       ?.filter(term => assetTermIds.includes(term.id))
       .map(term => term.name) || [];
 
@@ -120,8 +160,8 @@ export async function getAllDataAssets(): Promise<DataAsset[]> {
 
     return {
       ...assetCsv,
-      columnCount: parseInt(assetCsv.column_count, 10) || 0,
-      sampleRecordCount: assetCsv.sample_record_count ? parseInt(assetCsv.sample_record_count, 10) : undefined,
+      columnCount: parseInt(String(assetCsv.column_count), 10) || 0, // Ensure string conversion
+      sampleRecordCount: assetCsv.sample_record_count ? parseInt(String(assetCsv.sample_record_count), 10) : undefined,
       isSensitive: isSensitiveValue,
       schema,
       tags,
@@ -137,8 +177,6 @@ export async function getDataAssetById(id: string): Promise<DataAsset | undefine
   return assets.find(asset => asset.id === id);
 }
 
-// Note: Bookmarking functionality still primarily uses localStorage via useBookmarks hook.
-// This function is for potentially displaying 'DB-backed' bookmarks if needed elsewhere.
 export async function getBookmarkedAssetIdsByUserId(userId: string): Promise<string[]> {
   const db = await loadAllCsvData();
   if (!db || !db.bookmarks) return [];
@@ -150,8 +188,6 @@ export async function getAllUsers(): Promise<User[]> {
   return db?.users || [];
 }
 
-// Function to clear the cache, useful for development or if data needs to be reloaded
 export function clearCsvCache() {
   cachedDb = null;
 }
-
