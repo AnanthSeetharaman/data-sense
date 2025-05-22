@@ -1,7 +1,7 @@
 
 "use client";
 
-import type { DataAsset, ColumnSchema } from '@/lib/types';
+import type { DataAsset, ColumnSchema, RawLineageEntry } from '@/lib/types';
 import { useState, useEffect }from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -13,7 +13,7 @@ import { BookmarkButton } from './BookmarkButton';
 import { AITagSuggester } from './AITagSuggester';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { AlertTriangle, ArrowLeft, Calendar, ClipboardCopy, Database, FileText, Layers, LinkIcon, Loader2, Lock, MapPin, MessageSquare, Share2, Tag, Users, Info, Check, FileSpreadsheet } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Calendar, ClipboardCopy, Database, FileText, Layers, LinkIcon, Loader2, Lock, MapPin, MessageSquare, Share2, Tag, Users, Info, Check, FileSpreadsheet, GitFork } from 'lucide-react';
 import { format } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -31,7 +31,7 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
   const [asset, setAsset] = useState(initialAsset);
   const [newTag, setNewTag] = useState('');
   const { toast } = useToast();
-  const [isLoading, setIsLoading] = useState(!initialAsset);
+  const [isLoading, setIsLoading] = useState(!initialAsset); // True if no initial asset
   const [sampleDataSource, setSampleDataSource] = useState<SampleDataSource>('pg');
   const [csvSampleData, setCsvSampleData] = useState<Record<string, any>[] | null>(null);
   const [csvLoading, setCsvLoading] = useState(false);
@@ -41,16 +41,23 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
     if (initialAsset) {
         setAsset(initialAsset);
         setIsLoading(false);
+        // Reset CSV specific states if asset changes
+        if (initialAsset.id !== asset?.id) {
+            setCsvSampleData(null);
+            setCsvError(null);
+            setSampleDataSource('pg'); // Default back to PG
+        }
     } else {
+        // If initialAsset is null (e.g. not found), keep loading true for a bit then show error
         const timer = setTimeout(() => {
-            if (!asset) setIsLoading(false); 
-        }, 1000);
+             setIsLoading(false); 
+        }, 1000); // Give a small delay before showing "Not Found"
         return () => clearTimeout(timer);
     }
-  }, [initialAsset, asset]);
+  }, [initialAsset, asset?.id]);
 
   useEffect(() => {
-    if (sampleDataSource === 'csv' && asset?.csvPath && !csvSampleData) {
+    if (sampleDataSource === 'csv' && asset?.csvPath && !csvSampleData && !csvLoading && !csvError) {
       const loadCsvData = async () => {
         setCsvLoading(true);
         setCsvError(null);
@@ -71,7 +78,7 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
       };
       loadCsvData();
     }
-  }, [sampleDataSource, asset, csvSampleData]);
+  }, [sampleDataSource, asset, csvSampleData, csvLoading, csvError]);
 
 
   if (isLoading) {
@@ -89,8 +96,10 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
         <AlertTriangle className="mx-auto h-12 w-12 text-destructive mb-4" />
         <h2 className="text-2xl font-semibold text-destructive mb-2">Dataset Not Found</h2>
         <p className="text-muted-foreground">The requested data asset could not be found.</p>
-        <Button variant="outline" className="mt-6" onClick={() => window.history.back()}>
-          <ArrowLeft className="mr-2 h-4 w-4" /> Go Back
+        <Button variant="outline" className="mt-6" asChild>
+          <Link href="/">
+            <ArrowLeft className="mr-2 h-4 w-4" /> Go Back to Discover
+          </Link>
         </Button>
       </div>
     );
@@ -99,8 +108,9 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
   const handleAddTag = (tagValue: string) => {
     const tagToAdd = tagValue.trim();
     if (tagToAdd && !asset.tags.map(t => t.toLowerCase()).includes(tagToAdd.toLowerCase())) {
+      // In a real app, this would be an API call. For now, update local state.
       setAsset(prev => prev ? { ...prev, tags: [...prev.tags, tagToAdd] } : null);
-      toast({ title: "Tag Added", description: `"${tagToAdd}" has been added.` });
+      toast({ title: "Tag Added (Prototype)", description: `"${tagToAdd}" has been added locally.` });
     } else if (!tagToAdd) {
        toast({ variant: "destructive", title: "Invalid Tag", description: "Tag cannot be empty." });
     } else {
@@ -110,8 +120,9 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
   };
 
   const handleRemoveTag = (tagToRemove: string) => {
+    // In a real app, this would be an API call.
     setAsset(prev => prev ? { ...prev, tags: prev.tags.filter(tag => tag !== tagToRemove) } : null);
-    toast({ title: "Tag Removed", description: `"${tagToRemove}" has been removed.` });
+    toast({ title: "Tag Removed (Prototype)", description: `"${tagToRemove}" has been removed locally.` });
   };
   
   const copyToClipboard = (text: string, type: string) => {
@@ -130,7 +141,13 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
     });
   };
 
-  const currentSampleData = sampleDataSource === 'csv' ? csvSampleData : asset.sampleData;
+  const currentDisplaySampleData = sampleDataSource === 'csv' ? csvSampleData : asset.pgMockedSampleData;
+
+  const lineageTableHeaders: (keyof RawLineageEntry)[] = [
+    "REFERENCED_OBJECT_NAME", "REFERENCED_DATABASE", "REFERENCED_SCHEMA", "REFERENCED_OBJECT_DOMAIN", "DEPENDENCY_TYPE",
+    "REFERENCING_OBJECT_NAME", "REFERENCING_DATABASE", "REFERENCING_SCHEMA", "REFERENCING_OBJECT_DOMAIN"
+  ];
+
 
   return (
     <div className="space-y-6">
@@ -165,7 +182,7 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
           <TabsTrigger value="schema"><Layers className="mr-1 h-4 w-4 sm:mr-2"/>Schema</TabsTrigger>
           <TabsTrigger value="tags"><Tag className="mr-1 h-4 w-4 sm:mr-2"/>Tags</TabsTrigger>
           <TabsTrigger value="sample"><Database className="mr-1 h-4 w-4 sm:mr-2"/>Sample Data</TabsTrigger>
-          <TabsTrigger value="lineage"><FileText className="mr-1 h-4 w-4 sm:mr-2"/>Lineage & Query</TabsTrigger>
+          <TabsTrigger value="lineage"><GitFork className="mr-1 h-4 w-4 sm:mr-2"/>Lineage & Query</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview">
@@ -176,7 +193,7 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
                 <h3 className="font-semibold">Key Information</h3>
                 <ul className="list-disc list-inside text-sm space-y-1 text-foreground">
                   <li><span className="font-medium">Columns:</span> {asset.columnCount}</li>
-                  {asset.sampleRecordCount && <li><span className="font-medium">Total Sample Records (approx):</span> {asset.sampleRecordCount.toLocaleString()}</li>}
+                  {asset.sampleRecordCount != null && <li><span className="font-medium">Total Sample Records (approx):</span> {asset.sampleRecordCount.toLocaleString()}</li>}
                   {asset.owner && <li><span className="font-medium">Owner:</span> {asset.owner}</li>}
                   {asset.lastModified && <li><span className="font-medium">Last Modified:</span> {format(new Date(asset.lastModified), 'PPP p')}</li>}
                   {asset.isSensitive && <li className="flex items-center"><Lock className="h-4 w-4 mr-1 text-destructive" /> <span className="font-medium text-destructive">Contains Sensitive Data</span></li>}
@@ -209,10 +226,10 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
                 </TableHeader>
                 <TableBody>
                   {asset.schema.map((col: ColumnSchema) => (
-                    <TableRow key={col.name}>
-                      <TableCell className="font-medium">{col.name}</TableCell>
-                      <TableCell>{col.type}</TableCell>
-                      <TableCell>{col.nullable ? 'Yes' : 'No'}</TableCell>
+                    <TableRow key={col.column_name}>
+                      <TableCell className="font-medium">{col.column_name}</TableCell>
+                      <TableCell>{col.data_type}</TableCell>
+                      <TableCell>{col.is_nullable ? 'Yes' : 'No'}</TableCell>
                       <TableCell className="text-muted-foreground">{col.description || '-'}</TableCell>
                     </TableRow>
                   ))}
@@ -267,7 +284,6 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
                 <CardHeader>
                     <div className="flex justify-between items-center">
                         <CardTitle>Sample Data</CardTitle>
-                        {asset.csvPath && ( // Only show selector if CSV path exists
                         <div className="w-[220px]">
                             <Select value={sampleDataSource} onValueChange={(value) => setSampleDataSource(value as SampleDataSource)}>
                             <SelectTrigger>
@@ -279,15 +295,16 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
                                     <Database className="h-4 w-4" /> PostgreSQL (Mocked)
                                   </div>
                                 </SelectItem>
-                                <SelectItem value="csv">
-                                  <div className="flex items-center gap-2">
-                                    <FileSpreadsheet className="h-4 w-4" /> Local CSV
-                                  </div>
-                                </SelectItem>
+                                {asset.csvPath && ( // Only show CSV option if path exists
+                                  <SelectItem value="csv">
+                                    <div className="flex items-center gap-2">
+                                      <FileSpreadsheet className="h-4 w-4" /> Local CSV
+                                    </div>
+                                  </SelectItem>
+                                )}
                             </SelectContent>
                             </Select>
                         </div>
-                        )}
                     </div>
                 </CardHeader>
                 <CardContent>
@@ -302,34 +319,34 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
                         <AlertTitle>Error Loading CSV</AlertTitle>
                         <AlertDescription>{csvError}</AlertDescription>
                     </Alert>
-                ) : (currentSampleData && currentSampleData.length > 0) ? (
+                ) : (currentDisplaySampleData && currentDisplaySampleData.length > 0) ? (
                     <div className="overflow-x-auto">
                         <Table>
                             <TableHeader>
                             <TableRow>
-                                {Object.keys(currentSampleData[0]).map(key => (
+                                {Object.keys(currentDisplaySampleData[0]).map(key => (
                                 <TableHead key={key}>{key}</TableHead>
                                 ))}
                             </TableRow>
                             </TableHeader>
                             <TableBody>
-                            {currentSampleData.slice(0, 10).map((row, rowIndex) => ( // Limit to 10 rows for preview
+                            {currentDisplaySampleData.slice(0, 10).map((row, rowIndex) => ( 
                                 <TableRow key={rowIndex}>
                                 {Object.values(row).map((value, cellIndex) => (
-                                    <TableCell key={cellIndex}>{String(value)}</TableCell>
+                                    <TableCell key={cellIndex}>{String(value ?? '')}</TableCell>
                                 ))}
                                 </TableRow>
                             ))}
                             </TableBody>
                         </Table>
-                         {currentSampleData.length > 10 && <p className="text-sm text-muted-foreground mt-2">Showing 10 of {currentSampleData.length} sample records from {sampleDataSource === 'csv' ? 'CSV' : 'PG (Mocked)'}.</p>}
+                         {currentDisplaySampleData.length > 10 && <p className="text-sm text-muted-foreground mt-2">Showing 10 of {currentDisplaySampleData.length} sample records from {sampleDataSource === 'csv' ? 'CSV' : 'PG (Mocked)'}.</p>}
                     </div>
                 ) : (
                     <div className="text-center py-6">
                         <Database className="mx-auto h-10 w-10 text-muted-foreground mb-3" />
                         <p className="text-muted-foreground">
                             {sampleDataSource === 'csv' && !asset.csvPath 
-                                ? "No CSV file associated with this asset."
+                                ? "No CSV file associated with this asset for sample data."
                                 : `Sample data is not available for this asset from the selected source (${sampleDataSource === 'csv' ? 'CSV' : 'PG (Mocked)'}).`
                             }
                         </p>
@@ -340,15 +357,37 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
         </TabsContent>
 
         <TabsContent value="lineage">
-          <div className="grid md:grid-cols-2 gap-6">
+          <div className="grid md:grid-cols-1 gap-6"> {/* Changed to 1 column for better lineage display */}
             <Card>
                 <CardHeader><CardTitle>Lineage</CardTitle></CardHeader>
                 <CardContent>
-                <div className="text-center py-6">
-                    <FileText className="mx-auto h-10 w-10 text-muted-foreground mb-3" />
-                    <p className="text-muted-foreground">Lineage information is not yet available.</p>
-                    <p className="text-xs text-muted-foreground">(Upstream/downstream datasets will be shown here)</p>
-                </div>
+                {(asset.lineage && asset.lineage.length > 0) ? (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          {lineageTableHeaders.map(header => (
+                            <TableHead key={header}>{header.replace(/_/g, ' ')}</TableHead>
+                          ))}
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {asset.lineage.map((entry, rowIndex) => (
+                          <TableRow key={rowIndex}>
+                            {lineageTableHeaders.map(header => (
+                              <TableCell key={`${rowIndex}-${header}`}>{String(entry[header] ?? '-')}</TableCell>
+                            ))}
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                ) : (
+                  <div className="text-center py-6">
+                      <GitFork className="mx-auto h-10 w-10 text-muted-foreground mb-3" />
+                      <p className="text-muted-foreground">Lineage information is not available for this asset.</p>
+                  </div>
+                )}
                 </CardContent>
             </Card>
             <Card>

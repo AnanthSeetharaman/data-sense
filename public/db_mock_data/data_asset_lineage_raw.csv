@@ -1,0 +1,6 @@
+REFERENCED_DATABASE,REFERENCED_SCHEMA,REFERENCED_OBJECT_NAME,REFERENCED_OBJECT_ID,REFERENCED_OBJECT_DOMAIN,REFERENCING_DATABASE,REFERENCING_SCHEMA,REFERENCING_OBJECT_NAME,REFERENCING_OBJECT_ID,REFERENCING_OBJECT_DOMAIN,DEPENDENCY_TYPE
+prod_db,sales_schema,orders_table,hive-orders-base,TABLE,prod_db,sales_schema,customer_data,hive-table-1,TABLE,JOIN_CONDITION
+staging_db,logs,raw_events,hive-events-raw,TABLE,staging_db,logs,application_logs_raw,hive-logs-4,TABLE,ETL_PROCESS
+REPORTING_DB,SALES_VIEWS,vw_daily_sales,snowflake-daily-sales,VIEW,REPORTING_DB,FINANCE_VIEWS,vw_monthly_sales_summary,snowflake-view-3,VIEW,VIEW_ON_VIEW
+datalake-bronze,product_feeds,supplier_feed.json,adls-supplier-feed,FILE,datalake-bronze,product_data,product_catalog_latest.parquet,adls-file-2,FILE,DATA_INGESTION
+prod_db,sales_schema,customer_data,hive-table-1,TABLE,REPORTING_DB,SALES_VIEWS,vw_daily_sales,snowflake-daily-sales,VIEW,VIEW_ON_TABLE

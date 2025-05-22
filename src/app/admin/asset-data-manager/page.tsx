@@ -2,7 +2,6 @@
 "use client";
 
 import { useState, useEffect, ChangeEvent } from 'react';
-import { mockDataAssets } from '@/lib/mock-data';
 import type { DataAsset } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -11,38 +10,63 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Loader2, FileSpreadsheet, UploadCloud, Download, AlertTriangle, DatabaseZap } from 'lucide-react';
-import { fetchAndParseCsv, convertToCsvString, type ParseCsvResult } from '@/lib/csv-utils';
+import { fetchAndParseCsv, convertToCsvString } from '@/lib/csv-utils';
 import { useToast } from "@/hooks/use-toast";
+import { getAllDataAssets } from '@/lib/csv-data-loader'; // Use new data loader
+
 
 export default function AssetDataManagerPage() {
-  const [assetsWithCsv, setAssetsWithCsv] = useState<DataAsset[]>([]);
+  const [allAvailableAssets, setAllAvailableAssets] = useState<DataAsset[]>([]);
+  const [assetsWithCsvPath, setAssetsWithCsvPath] = useState<DataAsset[]>([]); // Assets that have a csvPath
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [currentCsvData, setCurrentCsvData] = useState<Record<string, any>[] | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(false); // General loading for assets list + CSV data
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
-    // Filter for assets that have a CSV path defined
-    setAssetsWithCsv(mockDataAssets.filter(asset => !!asset.csvPath));
+    async function loadAssets() {
+      setIsLoading(true);
+      try {
+        const assets = await getAllDataAssets();
+        setAllAvailableAssets(assets);
+        // For this "Asset Data Manager", we assume the 'csvPath' points to a full representation.
+        // In a real scenario, this might be a different path or logic.
+        setAssetsWithCsvPath(assets.filter(asset => !!asset.csvPath)); 
+      } catch (e) {
+        setError("Failed to load asset list.");
+        console.error(e);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    loadAssets();
   }, []);
 
   useEffect(() => {
     if (selectedAssetId) {
-      const asset = assetsWithCsv.find(a => a.id === selectedAssetId);
+      const asset = allAvailableAssets.find(a => a.id === selectedAssetId);
+      // Use the asset.csvPath which currently points to sample data CSVs.
+      // For this prototype, we're re-purposing it.
       if (asset?.csvPath) {
-        loadCsvData(asset.csvPath);
+        loadFullCsvData(asset.csvPath); 
       } else {
         setCurrentCsvData(null);
+        if (asset && !asset.csvPath) {
+          setError(`Asset "${asset.name}" does not have a CSV path defined for its full data representation.`);
+        }
       }
+    } else {
+        setCurrentCsvData(null); // Clear data if no asset is selected
     }
-  }, [selectedAssetId, assetsWithCsv]);
+  }, [selectedAssetId, allAvailableAssets]);
 
-  const loadCsvData = async (csvPath: string) => {
+  const loadFullCsvData = async (csvPath: string) => {
     setIsLoading(true);
     setError(null);
     try {
-      const result = await fetchAndParseCsv(csvPath);
+      // fetchAndParseCsv fetches from /public, based on the path given
+      const result = await fetchAndParseCsv(csvPath); 
       if (result.errors.length > 0) {
         console.warn('CSV parsing errors:', result.errors);
         setError(`Encountered ${result.errors.length} parsing error(s). Some data might be incorrect. Check console.`);
@@ -50,7 +74,7 @@ export default function AssetDataManagerPage() {
       setCurrentCsvData(result.data);
     } catch (err) {
       console.error('Failed to load or parse CSV data:', err);
-      setError('Failed to load or parse CSV data. Ensure the file exists in /public' + csvPath + ' and is valid.');
+      setError('Failed to load or parse CSV data. Ensure the file exists at ' + csvPath + ' in /public and is valid.');
       setCurrentCsvData(null);
     } finally {
       setIsLoading(false);
@@ -62,8 +86,8 @@ export default function AssetDataManagerPage() {
       toast({ title: "No Data", description: "No data to download.", variant: "destructive" });
       return;
     }
-    const asset = assetsWithCsv.find(a => a.id === selectedAssetId);
-    const fileName = asset ? `${asset.name}_full_data.csv` : 'full_data.csv'; // Indicate it's full data
+    const asset = allAvailableAssets.find(a => a.id === selectedAssetId);
+    const fileName = asset ? `${asset.name}_full_data.csv` : 'full_data.csv';
     const csvString = convertToCsvString(currentCsvData);
     
     const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
@@ -119,13 +143,13 @@ export default function AssetDataManagerPage() {
         setIsLoading(false);
       }
     }
-    event.target.value = ''; // Reset file input
+    event.target.value = ''; 
   };
 
-  const selectedAsset = assetsWithCsv.find(a => a.id === selectedAssetId);
+  const selectedAsset = allAvailableAssets.find(a => a.id === selectedAssetId);
   const headers = currentCsvData && currentCsvData.length > 0 
                   ? Object.keys(currentCsvData[0]) 
-                  : selectedAsset?.schema.map(s => s.name) ?? [];
+                  : selectedAsset?.schema.map(s => s.column_name) ?? [];
 
 
   return (
@@ -143,7 +167,7 @@ export default function AssetDataManagerPage() {
             <AlertTitle>Developer Note</AlertTitle>
             <AlertDescription>
               This page demonstrates managing CSVs that would represent your full datasets.
-              For this prototype, it uses the same sample CSVs located in `/public/sample_data/`.
+              For this prototype, it uses the same sample CSVs (referenced by `csvPath`) located in `/public/sample_data/`.
               CSV uploads are client-side only and are not persisted to the server.
             </AlertDescription>
           </Alert>
@@ -151,23 +175,23 @@ export default function AssetDataManagerPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Select Data Asset (Table) to Manage its CSV</CardTitle>
+          <CardTitle>Select Data Asset (Table) to Manage its Full CSV</CardTitle>
           <div className="flex flex-col sm:flex-row gap-4 mt-4">
             <div className="flex-grow sm:max-w-md">
-              <Select onValueChange={setSelectedAssetId} value={selectedAssetId || ""}>
+              <Select onValueChange={setSelectedAssetId} value={selectedAssetId || ""} disabled={isLoading}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select a data asset..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {assetsWithCsv.map(asset => (
+                  {assetsWithCsvPath.length > 0 ? assetsWithCsvPath.map(asset => (
                     <SelectItem key={asset.id} value={asset.id}>
-                      {asset.name} (CSV: {asset.csvPath})
+                      {asset.name} {asset.csvPath ? `(CSV: ${asset.csvPath})` : '(No CSV path)'}
                     </SelectItem>
-                  ))}
+                  )) : <SelectItem value="no-assets-csv" disabled>No assets with CSV paths found</SelectItem>}
                 </SelectContent>
               </Select>
             </div>
-            {selectedAssetId && (
+            {selectedAssetId && selectedAsset?.csvPath && (
               <>
                 <Button onClick={handleDownloadCsv} disabled={isLoading || !currentCsvData || currentCsvData.length === 0}>
                   <Download className="mr-2 h-4 w-4" /> Download Displayed CSV
@@ -192,10 +216,10 @@ export default function AssetDataManagerPage() {
           </div>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {isLoading && !currentCsvData ? ( // Show main loading indicator
             <div className="flex items-center justify-center py-10">
               <Loader2 className="h-12 w-12 animate-spin text-primary" />
-              <p className="ml-4 text-lg text-muted-foreground">Loading CSV data...</p>
+              <p className="ml-4 text-lg text-muted-foreground">Loading data...</p>
             </div>
           ) : error ? (
             <Alert variant="destructive">
@@ -227,18 +251,20 @@ export default function AssetDataManagerPage() {
                 </Table>
                 {currentCsvData.length > 20 && <p className="text-sm text-muted-foreground mt-2">Showing first 20 of {currentCsvData.length} records from CSV.</p>}
               </div>
-            ) : (
+            ) : ( // CSV loaded but is empty
                 <div className="text-center py-10">
                     <FileSpreadsheet className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
                     <p className="text-muted-foreground">No data found in the CSV or the CSV is empty for {selectedAsset?.name}.</p>
                 </div>
             )
-          ) : selectedAssetId ? (
+          ) : selectedAssetId ? ( // Asset selected, but CSV path might be missing or data not loaded
              <div className="text-center py-10">
                 <FileSpreadsheet className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-                <p className="text-muted-foreground">Could not load CSV data for {selectedAsset?.name}.</p>
+                 <p className="text-muted-foreground">
+                  {selectedAsset?.csvPath ? `Could not load CSV data for ${selectedAsset.name}.` : `No CSV path defined for ${selectedAsset.name} to manage its full data.`}
+                </p>
             </div>
-          ) : (
+          ) : ( // No asset selected
             <div className="text-center py-10">
               <DatabaseZap className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
               <p className="text-muted-foreground">Select a data asset to manage its CSV representation.</p>

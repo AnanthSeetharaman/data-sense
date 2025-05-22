@@ -1,10 +1,10 @@
 
-import { mockDataAssets } from '@/lib/mock-data';
 import { DataAssetFeed } from '@/components/data-asset/DataAssetFeed';
+import { getAllDataAssets } from '@/lib/csv-data-loader';
+import type { DataAsset } from '@/lib/types';
 
 export default async function DiscoverPage() {
-  // In a real app, this would be an API call or database query
-  const assets = mockDataAssets;
+  const assets: DataAsset[] = await getAllDataAssets();
 
   return (
     <div className="container mx-auto py-2">

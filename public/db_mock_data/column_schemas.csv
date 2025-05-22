@@ -1,0 +1,42 @@
+id,data_asset_id,column_name,data_type,is_nullable,description
+1,hive-table-1,customer_id,INT,FALSE,"Unique identifier for the customer."
+2,hive-table-1,first_name,STRING,TRUE,"Customer's first name."
+3,hive-table-1,last_name,STRING,TRUE,"Customer's last name."
+4,hive-table-1,email,STRING,TRUE,"Customer's email address."
+5,hive-table-1,registration_date,TIMESTAMP,TRUE,"Date of customer registration."
+6,hive-table-1,total_spent,"DECIMAL(10,2)",TRUE,"Total amount spent by customer."
+7,hive-table-1,last_purchase_date,DATE,TRUE,"Date of last purchase."
+8,hive-table-1,country,STRING,TRUE,"Customer's country of residence."
+9,hive-table-1,city,STRING,TRUE,"Customer's city of residence."
+10,hive-table-1,zip_code,STRING,TRUE,"Customer's zip code."
+11,hive-table-1,is_active,BOOLEAN,FALSE,"Indicates if customer account is active."
+12,hive-table-1,notes,STRING,TRUE,"Additional notes about the customer."
+13,adls-file-2,product_id,BIGINT,FALSE,"Unique identifier for the product."
+14,adls-file-2,product_name,STRING,TRUE,"Name of the product."
+15,adls-file-2,category,STRING,TRUE,"Product category."
+16,adls-file-2,price,DOUBLE,TRUE,"Product price."
+17,adls-file-2,stock_quantity,INT,TRUE,"Current stock quantity."
+18,adls-file-2,supplier_id,INT,TRUE,"Identifier for the product supplier."
+19,adls-file-2,date_added,DATE,TRUE,"Date the product was added to catalog."
+20,adls-file-2,is_discontinued,BOOLEAN,FALSE,"Indicates if product is discontinued."
+21,snowflake-view-3,sales_month,DATE,FALSE,"Month of sales aggregation (first day of month)."
+22,snowflake-view-3,product_category,VARCHAR,TRUE,"Category of the product."
+23,snowflake-view-3,region,VARCHAR,TRUE,"Sales region."
+24,snowflake-view-3,total_sales_amount,"NUMBER(38,2)",TRUE,"Total sales amount for the month, category, and region."
+25,snowflake-view-3,transaction_count,INTEGER,TRUE,"Number of transactions."
+26,hive-logs-4,log_timestamp,TIMESTAMP,FALSE,
+27,hive-logs-4,service_name,STRING,TRUE,
+28,hive-logs-4,log_level,STRING,TRUE,
+29,hive-logs-4,thread_id,STRING,TRUE,
+30,hive-logs-4,message,STRING,TRUE,
+31,hive-logs-4,exception_details,STRING,TRUE,
+32,hive-logs-4,dt,DATE,FALSE,"Partition column for date."
+33,adls-images-5,file_name,STRING,FALSE,
+34,adls-images-5,file_type,STRING,TRUE,
+35,adls-images-5,size_kb,INT,TRUE,
+36,adls-images-5,upload_date,TIMESTAMP,TRUE,
+37,hive-orders-base,order_id,INT,FALSE,"Unique order identifier"
+38,hive-orders-base,customer_id,INT,FALSE,"FK to customer_data"
+39,hive-orders-base,order_date,DATE,FALSE,"Date of order"
+40,hive-orders-base,total_amount,DECIMAL,FALSE,"Total order amount"
+41,hive-orders-base,status,STRING,FALSE,"Order status"

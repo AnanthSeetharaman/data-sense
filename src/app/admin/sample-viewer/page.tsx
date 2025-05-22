@@ -2,7 +2,6 @@
 "use client";
 
 import { useState, useEffect, ChangeEvent } from 'react';
-import { mockDataAssets } from '@/lib/mock-data';
 import type { DataAsset } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -11,11 +10,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Loader2, FileSpreadsheet, UploadCloud, Download, AlertTriangle, Settings } from 'lucide-react';
-import { fetchAndParseCsv, convertToCsvString, type ParseCsvResult } from '@/lib/csv-utils';
+import { fetchAndParseCsv, convertToCsvString } from '@/lib/csv-utils';
 import { useToast } from "@/hooks/use-toast";
+import { getAllDataAssets } from '@/lib/csv-data-loader'; // Use new data loader
 
 export default function AdminSampleViewerPage() {
-  const [assetsWithCsv, setAssetsWithCsv] = useState<DataAsset[]>([]);
+  const [allAvailableAssets, setAllAvailableAssets] = useState<DataAsset[]>([]);
+  const [assetsWithCsvPath, setAssetsWithCsvPath] = useState<DataAsset[]>([]);
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [currentSampleData, setCurrentSampleData] = useState<Record<string, any>[] | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -23,25 +24,43 @@ export default function AdminSampleViewerPage() {
   const { toast } = useToast();
 
   useEffect(() => {
-    setAssetsWithCsv(mockDataAssets.filter(asset => !!asset.csvPath && !!asset.sampleData)); // Ensure it has sample data for headers if CSV is empty
+    async function loadAssets() {
+      setIsLoading(true);
+      try {
+        const assets = await getAllDataAssets();
+        setAllAvailableAssets(assets);
+        setAssetsWithCsvPath(assets.filter(asset => !!asset.csvPath)); // csvPath is for sample files
+      } catch (e) {
+        setError("Failed to load asset list.");
+        console.error(e);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    loadAssets();
   }, []);
 
   useEffect(() => {
     if (selectedAssetId) {
-      const asset = assetsWithCsv.find(a => a.id === selectedAssetId);
-      if (asset?.csvPath) {
-        loadCsvData(asset.csvPath);
+      const asset = allAvailableAssets.find(a => a.id === selectedAssetId);
+      if (asset?.csvPath) { // csvPath on DataAsset refers to the specific sample data CSV
+        loadCsvDataForView(asset.csvPath);
       } else {
         setCurrentSampleData(null);
+         if (asset && !asset.csvPath) {
+          setError(`Asset "${asset.name}" does not have a sample CSV path defined.`);
+        }
       }
+    } else {
+        setCurrentSampleData(null);
     }
-  }, [selectedAssetId, assetsWithCsv]);
+  }, [selectedAssetId, allAvailableAssets]);
 
-  const loadCsvData = async (csvPath: string) => {
+  const loadCsvDataForView = async (csvPath: string) => {
     setIsLoading(true);
     setError(null);
     try {
-      const result = await fetchAndParseCsv(csvPath);
+      const result = await fetchAndParseCsv(csvPath); // Uses utility to fetch from /public
       if (result.errors.length > 0) {
         console.warn('CSV parsing errors:', result.errors);
         setError(`Encountered ${result.errors.length} parsing error(s). Some data might be incorrect. Check console.`);
@@ -49,7 +68,7 @@ export default function AdminSampleViewerPage() {
       setCurrentSampleData(result.data);
     } catch (err) {
       console.error('Failed to load or parse CSV data:', err);
-      setError('Failed to load or parse CSV data. Ensure the file exists in /public' + csvPath + ' and is valid.');
+      setError('Failed to load or parse CSV data. Ensure the file exists at ' + csvPath + ' in /public and is valid.');
       setCurrentSampleData(null);
     } finally {
       setIsLoading(false);
@@ -61,7 +80,7 @@ export default function AdminSampleViewerPage() {
       toast({ title: "No Data", description: "No data to download.", variant: "destructive" });
       return;
     }
-    const asset = assetsWithCsv.find(a => a.id === selectedAssetId);
+    const asset = allAvailableAssets.find(a => a.id === selectedAssetId);
     const fileName = asset ? `${asset.name}_sample.csv` : 'sample_data.csv';
     const csvString = convertToCsvString(currentSampleData);
     
@@ -91,7 +110,6 @@ export default function AdminSampleViewerPage() {
         const reader = new FileReader();
         reader.onload = async (e) => {
           const text = e.target?.result as string;
-          // Simulating fetchAndParseCsv structure for consistency
           const Papa = (await import('papaparse')).default;
           Papa.parse(text, {
             header: true,
@@ -105,8 +123,8 @@ export default function AdminSampleViewerPage() {
               toast({ title: "CSV Processed", description: "Uploaded CSV data is now displayed. This is a temporary view and does not save the file on the server." });
               setIsLoading(false);
             },
-            error: (error: Error) => {
-              console.error('Error parsing uploaded CSV:', error);
+            error: (parseError: Error) => {
+              console.error('Error parsing uploaded CSV:', parseError);
               setError('Error parsing uploaded CSV.');
               setIsLoading(false);
             }
@@ -119,14 +137,14 @@ export default function AdminSampleViewerPage() {
         setIsLoading(false);
       }
     }
-     // Reset file input to allow uploading the same file again
-    event.target.value = '';
+    event.target.value = ''; 
   };
 
-  const selectedAsset = assetsWithCsv.find(a => a.id === selectedAssetId);
+  const selectedAsset = allAvailableAssets.find(a => a.id === selectedAssetId);
+  // Determine headers: from current data if loaded, else from asset's schema (if no data)
   const headers = currentSampleData && currentSampleData.length > 0 
                   ? Object.keys(currentSampleData[0]) 
-                  : selectedAsset?.schema.map(s => s.name) ?? [];
+                  : selectedAsset?.schema.map(s => s.column_name) ?? [];
 
 
   return (
@@ -144,30 +162,30 @@ export default function AdminSampleViewerPage() {
             <AlertTitle>Developer Note</AlertTitle>
             <AlertDescription>
               CSV uploads are client-side only for this prototype. Changes are not persisted to the server.
-              Original CSVs are located in the `/public/sample_data/` directory.
+              Original sample CSVs are referenced via the `csvPath` property of each asset and are located in the `/public/sample_data/` directory.
             </AlertDescription>
           </Alert>
       </header>
 
       <Card>
         <CardHeader>
-          <CardTitle>Select Data Asset (Table)</CardTitle>
+          <CardTitle>Select Data Asset to Manage Its Sample CSV</CardTitle>
           <div className="flex flex-col sm:flex-row gap-4 mt-4">
             <div className="flex-grow sm:max-w-md">
-              <Select onValueChange={setSelectedAssetId} value={selectedAssetId || ""}>
+              <Select onValueChange={setSelectedAssetId} value={selectedAssetId || ""} disabled={isLoading}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select a data asset..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {assetsWithCsv.map(asset => (
+                  {assetsWithCsvPath.length > 0 ? assetsWithCsvPath.map(asset => (
                     <SelectItem key={asset.id} value={asset.id}>
-                      {asset.name} ({asset.csvPath})
+                      {asset.name} {asset.csvPath ? `(${asset.csvPath})` : '(No sample CSV path)'}
                     </SelectItem>
-                  ))}
+                  )) : <SelectItem value="no-assets" disabled>No assets with CSV paths found</SelectItem>}
                 </SelectContent>
               </Select>
             </div>
-            {selectedAssetId && (
+            {selectedAssetId && selectedAsset?.csvPath && (
               <>
                 <Button onClick={handleDownloadCsv} disabled={isLoading || !currentSampleData || currentSampleData.length === 0}>
                   <Download className="mr-2 h-4 w-4" /> Download Displayed CSV
@@ -192,7 +210,7 @@ export default function AdminSampleViewerPage() {
           </div>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {isLoading && !currentSampleData ? ( // Show main loading only if no data yet
             <div className="flex items-center justify-center py-10">
               <Loader2 className="h-12 w-12 animate-spin text-primary" />
               <p className="ml-4 text-lg text-muted-foreground">Loading data...</p>
@@ -206,7 +224,7 @@ export default function AdminSampleViewerPage() {
           ) : selectedAssetId && currentSampleData ? (
             currentSampleData.length > 0 ? (
               <div className="overflow-x-auto">
-                <h3 className="text-lg font-semibold mb-2">Displaying sample data for: {selectedAsset?.name}</h3>
+                <h3 className="text-lg font-semibold mb-2">Displaying sample CSV data for: {selectedAsset?.name}</h3>
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -216,7 +234,7 @@ export default function AdminSampleViewerPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {currentSampleData.slice(0, 20).map((row, rowIndex) => ( // Show up to 20 rows
+                    {currentSampleData.slice(0, 20).map((row, rowIndex) => ( 
                       <TableRow key={rowIndex}>
                         {headers.map(header => (
                           <TableCell key={`${rowIndex}-${header}`}>{String(row[header] ?? '')}</TableCell>
@@ -225,20 +243,22 @@ export default function AdminSampleViewerPage() {
                     ))}
                   </TableBody>
                 </Table>
-                {currentSampleData.length > 20 && <p className="text-sm text-muted-foreground mt-2">Showing 20 of {currentSampleData.length} sample records.</p>}
+                {currentSampleData.length > 20 && <p className="text-sm text-muted-foreground mt-2">Showing 20 of {currentSampleData.length} sample records from CSV.</p>}
               </div>
             ) : (
                 <div className="text-center py-10">
                     <FileSpreadsheet className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-                    <p className="text-muted-foreground">No sample data found in the CSV or the CSV is empty for {selectedAsset?.name}.</p>
+                    <p className="text-muted-foreground">No data found in the CSV or the CSV is empty for {selectedAsset?.name}.</p>
                 </div>
             )
-          ) : selectedAssetId ? (
+          ) : selectedAssetId ? ( // Asset selected, but no data / path error
              <div className="text-center py-10">
                 <FileSpreadsheet className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-                <p className="text-muted-foreground">Could not load data for {selectedAsset?.name}.</p>
+                <p className="text-muted-foreground">
+                  {selectedAsset?.csvPath ? `Could not load data for ${selectedAsset.name}.` : `No sample CSV path defined for ${selectedAsset.name}.`}
+                </p>
             </div>
-          ) : (
+          ) : ( // No asset selected
             <div className="text-center py-10">
               <FileSpreadsheet className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
               <p className="text-muted-foreground">Select a data asset to view its sample CSV data.</p>

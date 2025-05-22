@@ -1,0 +1,11 @@
+data_asset_id,term_id
+hive-table-1,1
+hive-table-1,2
+adls-file-2,3
+adls-file-2,4
+hive-logs-4,5
+adls-images-5,6
+hive-orders-base,7
+hive-events-raw,8
+snowflake-view-3,9
+snowflake-daily-sales,9

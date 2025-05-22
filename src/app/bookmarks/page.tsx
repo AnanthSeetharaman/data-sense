@@ -1,27 +1,50 @@
 
-"use client"; // This page needs to be client-side to use the useBookmarks hook
+"use client"; 
 
-import { useState, useEffect, useMemo } from 'react';
-import { mockDataAssets } from '@/lib/mock-data';
+import { useState, useEffect } from 'react';
 import { DataAssetCard } from '@/components/data-asset/DataAssetCard';
 import { useBookmarks } from '@/hooks/useBookmarks';
 import type { DataAsset } from '@/lib/types';
 import { Bookmark, Info } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from '@/components/ui/skeleton';
+import { getAllDataAssets } from '@/lib/csv-data-loader'; // To get all assets for filtering
 
 export default function BookmarksPage() {
-  const { bookmarkedIds, isInitialized } = useBookmarks();
+  const { bookmarkedIds, isInitialized: bookmarksInitialized } = useBookmarks();
+  const [allAssets, setAllAssets] = useState<DataAsset[]>([]);
   const [bookmarkedAssets, setBookmarkedAssets] = useState<DataAsset[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (isInitialized) {
-      const filteredAssets = mockDataAssets.filter(asset => bookmarkedIds.has(asset.id));
-      setBookmarkedAssets(filteredAssets);
+    async function fetchData() {
+      setIsLoading(true);
+      try {
+        const fetchedAssets = await getAllDataAssets();
+        setAllAssets(fetchedAssets);
+      } catch (error) {
+        console.error("Failed to load all assets for bookmarks:", error);
+        setAllAssets([]); // Set to empty on error
+      }
+      // setIsLoading(false); // Loading state will be managed by combination with bookmarksInitialized
     }
-  }, [bookmarkedIds, isInitialized]);
+    fetchData();
+  }, []);
 
-  if (!isInitialized) {
+  useEffect(() => {
+    if (bookmarksInitialized && allAssets.length > 0) {
+      const filteredAssets = allAssets.filter(asset => bookmarkedIds.has(asset.id));
+      setBookmarkedAssets(filteredAssets);
+      setIsLoading(false); 
+    } else if (bookmarksInitialized && allAssets.length === 0 && !isLoading) {
+      // Handles case where allAssets might be empty due to fetch error, but bookmarks are initialized
+      setIsLoading(false);
+    }
+     // If bookmarks are initialized but allAssets haven't loaded yet, keep isLoading true.
+  }, [bookmarkedIds, bookmarksInitialized, allAssets, isLoading]);
+
+
+  if (isLoading || !bookmarksInitialized) {
     return (
       <div className="container mx-auto py-8">
         <header className="mb-8">
@@ -104,4 +127,3 @@ function CardSkeleton() {
     </div>
   );
 }
-

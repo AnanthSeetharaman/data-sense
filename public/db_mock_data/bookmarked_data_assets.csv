@@ -1,0 +1,4 @@
+user_id,data_asset_id,bookmarked_at
+user_001,hive-table-1,2024-05-23T10:00:00Z
+user_001,snowflake-view-3,2024-05-24T11:30:00Z
+user_001,adls-file-2,2024-05-25T12:00:00Z
