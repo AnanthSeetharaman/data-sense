@@ -17,7 +17,7 @@ interface DataAssetFeedProps {
 
 export function DataAssetFeed({ initialAssets }: DataAssetFeedProps) {
   const { appliedFilters, filtersApplied } = useFilters();
-  const { currentRegion } = useRegion();
+  const { currentRegion } = useRegion(); // For potential future use or logging
   const [displayedAssets, setDisplayedAssets] = useState<DataAsset[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -36,17 +36,16 @@ export function DataAssetFeed({ initialAssets }: DataAssetFeedProps) {
       return;
     }
 
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9002';
-    let fetchedData: DataAsset[] = [];
+    // Use relative paths for API calls
     let fetchUrl = '';
 
     try {
       console.log(`DataAssetFeed: Fetching data for source: ${currentFilters.source}, region: ${currentRegion}`);
       if (currentFilters.source === 'Snowflake') {
-        fetchUrl = `${apiUrl}/api/snowflake-assets`;
+        fetchUrl = `/api/snowflake-assets`; // Relative path
         console.log(`DataAssetFeed: Using Snowflake API URL: ${fetchUrl}`);
       } else if (currentFilters.source === 'MetaStore') {
-        fetchUrl = `${apiUrl}/api/csv-assets`;
+        fetchUrl = `/api/csv-assets`; // Relative path
         console.log(`DataAssetFeed: Using MetaStore (CSV) API URL: ${fetchUrl}`);
       } else {
         const unsupportedSourceError = `Unsupported data source: ${currentFilters.source}`;
@@ -56,7 +55,9 @@ export function DataAssetFeed({ initialAssets }: DataAssetFeedProps) {
         return;
       }
       
+      console.log("DataAssetFeed: Attempting to fetch from URL:", fetchUrl);
       const response = await fetch(fetchUrl);
+
       if (!response.ok) {
         let errData: { error?: string } = { error: `HTTP error ${response.status}` };
         try {
@@ -70,13 +71,29 @@ export function DataAssetFeed({ initialAssets }: DataAssetFeedProps) {
         throw new Error(apiErrorMessage);
       }
 
-      fetchedData = await response.json();
+      const fetchedData: DataAsset[] = await response.json();
       console.log(`DataAssetFeed: Successfully fetched ${fetchedData.length} assets from ${fetchUrl}`);
 
-      if (currentFilters.tags) {
+      let processedData = fetchedData;
+
+      // Client-side filtering for tags and potentially by specific MetaStore sources if needed
+      if (currentFilters.source === 'MetaStore' && currentFilters.tags) {
+          const filterTags = currentFilters.tags.toLowerCase().split(',').map(t => t.trim()).filter(t => t);
+          if (filterTags.length > 0) {
+              processedData = processedData.filter(asset =>
+                  filterTags.some(ft =>
+                  asset.name.toLowerCase().includes(ft) ||
+                  (asset.description && asset.description.toLowerCase().includes(ft)) ||
+                  (asset.tags && asset.tags.some(tag => tag.toLowerCase().includes(ft))) ||
+                  (asset.location && asset.location.toLowerCase().includes(ft))
+                  )
+              );
+          }
+      } else if (currentFilters.source === 'Snowflake' && currentFilters.tags) {
+        // Apply tag filtering for Snowflake assets too if tags are specified
         const filterTags = currentFilters.tags.toLowerCase().split(',').map(t => t.trim()).filter(t => t);
         if (filterTags.length > 0) {
-          fetchedData = fetchedData.filter(asset =>
+          processedData = processedData.filter(asset =>
             filterTags.some(ft =>
               asset.name.toLowerCase().includes(ft) ||
               (asset.description && asset.description.toLowerCase().includes(ft)) ||
@@ -86,11 +103,10 @@ export function DataAssetFeed({ initialAssets }: DataAssetFeedProps) {
           );
         }
       }
-      setDisplayedAssets(fetchedData);
+      setDisplayedAssets(processedData);
 
     } catch (e: any) {
-      console.error("DataAssetFeed fetchData error:", e);
-      console.error("DataAssetFeed e.message:", e.message);
+      console.error("DataAssetFeed fetchData error for URL:", fetchUrl, e);
       const errorMessage = e.message || `An error occurred while fetching ${currentFilters.source || 'assets'}. Check console for details.`;
       setError(errorMessage);
       setDisplayedAssets([]);
@@ -105,11 +121,11 @@ export function DataAssetFeed({ initialAssets }: DataAssetFeedProps) {
       if (appliedFilters.source) {
         fetchData(appliedFilters);
       } else {
-        setDisplayedAssets([]);
-        setError(null);
+        setDisplayedAssets([]); // Clear assets if no source is selected but filters were 'applied'
+        setError(null); // Clear any previous errors
       }
     } else if (!filtersApplied) {
-      setDisplayedAssets([]); 
+      setDisplayedAssets([]); // Clear assets if filters are cleared/not applied
       setError(null);
     }
   }, [appliedFilters, filtersApplied, fetchData]);
@@ -166,12 +182,12 @@ export function DataAssetFeed({ initialAssets }: DataAssetFeedProps) {
     );
   }
 
-  if (error) { // This 'error' is the state variable
+  if (error) {
      return (
         <Alert variant="destructive" className="mt-6">
             <Info className="h-4 w-4" />
-            <AlertTitle>Error Loading Assets</AlertTitle> {/* This is the title */}
-            <AlertDescription>{error}</AlertDescription> {/* This is the 'error' state content */}
+            <AlertTitle>Error Loading Assets</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
         </Alert>
      );
   }
