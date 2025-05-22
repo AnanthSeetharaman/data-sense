@@ -1,17 +1,17 @@
 
 "use client";
 
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import type { DataAsset } from '@/lib/types';
 import { DataAssetCard } from './DataAssetCard';
-import { SearchInput } from '@/components/common/SearchInput'; // Keep for local text search within results
+import { SearchInput } from '@/components/common/SearchInput';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Info, Loader2, Filter as FilterIcon } from "lucide-react";
 import { useFilters, type FilterValues } from '@/contexts/FilterContext';
 
 interface DataAssetFeedProps {
-  initialAssets: DataAsset[]; // Will be empty array initially
+  initialAssets: DataAsset[];
 }
 
 export function DataAssetFeed({ initialAssets }: DataAssetFeedProps) {
@@ -20,13 +20,13 @@ export function DataAssetFeed({ initialAssets }: DataAssetFeedProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [searchTerm, setSearchTerm] = useState(''); // For local text search on displayed results
+  const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState('name-asc');
 
   const fetchData = useCallback(async (currentFilters: FilterValues) => {
     setIsLoading(true);
     setError(null);
-    setDisplayedAssets([]); // Clear previous assets
+    setDisplayedAssets([]);
 
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9002';
     let fetchedData: DataAsset[] = [];
@@ -40,25 +40,9 @@ export function DataAssetFeed({ initialAssets }: DataAssetFeedProps) {
         }
         fetchedData = await response.json();
       } else {
-        // Fetch from CSV assets if Snowflake is not selected,
-        // or if other sources are selected (even if Snowflake is also selected - this logic can be refined)
-        // For now, if Snowflake is not selected, fetch all CSV assets and filter client-side by source.
-        const sourceQueryParts: string[] = [];
-        if (currentFilters.sources.Hive) sourceQueryParts.push('Hive');
-        if (currentFilters.sources.ADLS) sourceQueryParts.push('ADLS');
-        
-        // If no specific CSV sources are selected, but filters are applied (e.g. by tags), fetch all CSV assets
-        // The current logic is: if Snowflake is primary, else CSVs. If specific CSV sources are selected, use them.
-        // If only tags are specified and no sources, what to do? Let's assume we fetch all CSVs then.
-        
         let csvApiUrl = `${apiUrl}/api/csv-assets`;
-        // This logic is simplified: If any non-Snowflake source is checked, we fetch all CSVs and filter.
-        // A more robust API would accept multiple source types.
-        if (sourceQueryParts.length > 0) {
-            // For now, the /api/csv-assets returns all. We filter client-side.
-            // To filter server-side, API would need to accept multiple sources.
-        }
-
+        // This part could be enhanced to pass specific source filters to the API
+        // For now, we fetch all CSV assets if Snowflake is not selected.
         const response = await fetch(csvApiUrl);
         if (!response.ok) {
           const errData = await response.json().catch(() => ({}));
@@ -67,16 +51,19 @@ export function DataAssetFeed({ initialAssets }: DataAssetFeedProps) {
         let csvAssets: DataAsset[] = await response.json();
 
         // Client-side filter by selected non-Snowflake sources if any are checked
-        if (sourceQueryParts.length > 0) {
+        const activeNonSnowflakeSources = Object.entries(currentFilters.sources)
+          .filter(([source, isActive]) => source !== 'Snowflake' && isActive)
+          .map(([source]) => source);
+
+        if (activeNonSnowflakeSources.length > 0) {
             csvAssets = csvAssets.filter(asset => 
-                (currentFilters.sources.Hive && asset.source === 'Hive') ||
-                (currentFilters.sources.ADLS && asset.source === 'ADLS')
+                activeNonSnowflakeSources.includes(asset.source)
             );
         }
-         fetchedData = csvAssets;
+        fetchedData = csvAssets;
       }
 
-      // Client-side tag filtering (simple "contains" for now)
+      // Client-side tag filtering
       if (currentFilters.tags) {
         const filterTags = currentFilters.tags.toLowerCase().split(',').map(t => t.trim()).filter(t => t);
         if (filterTags.length > 0) {
@@ -84,8 +71,8 @@ export function DataAssetFeed({ initialAssets }: DataAssetFeedProps) {
             filterTags.some(ft =>
               asset.name.toLowerCase().includes(ft) ||
               (asset.description && asset.description.toLowerCase().includes(ft)) ||
-              asset.tags.some(tag => tag.toLowerCase().includes(ft)) ||
-              asset.location.toLowerCase().includes(ft)
+              (asset.tags && asset.tags.some(tag => tag.toLowerCase().includes(ft))) ||
+              (asset.location && asset.location.toLowerCase().includes(ft))
             )
           );
         }
@@ -105,7 +92,7 @@ export function DataAssetFeed({ initialAssets }: DataAssetFeedProps) {
     if (filtersApplied && appliedFilters) {
       fetchData(appliedFilters);
     } else if (!filtersApplied) {
-      setDisplayedAssets([]); // Clear assets if filters are cleared
+      setDisplayedAssets([]); 
       setError(null);
     }
   }, [appliedFilters, filtersApplied, fetchData]);
@@ -118,8 +105,8 @@ export function DataAssetFeed({ initialAssets }: DataAssetFeedProps) {
       assets = assets.filter(asset =>
         asset.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (asset.description && asset.description.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        asset.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        asset.location.toLowerCase().includes(searchTerm.toLowerCase())
+        (asset.tags && asset.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()))) ||
+        (asset.location && asset.location.toLowerCase().includes(searchTerm.toLowerCase()))
       );
     }
     
@@ -203,7 +190,7 @@ export function DataAssetFeed({ initialAssets }: DataAssetFeedProps) {
             <Info className="h-4 w-4" />
             <AlertTitle>No Data Assets Found</AlertTitle>
             <AlertDescription>
-              No assets match your current filter criteria. Try adjusting your filters.
+              No assets match your current filter criteria. Try adjusting your filters or check if the selected data source is available.
             </AlertDescription>
           </Alert>
       ) : (
