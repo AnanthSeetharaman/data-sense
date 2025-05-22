@@ -7,37 +7,57 @@ import { DataAssetCard } from './DataAssetCard';
 import { SearchInput } from '@/components/common/SearchInput';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Info } from "lucide-react";
+import { Info, Loader2 } from "lucide-react"; // Added Loader2
+import { useRegion } from '@/contexts/RegionContext'; // Import useRegion
 
 interface DataAssetFeedProps {
   initialAssets: DataAsset[];
+  // TODO: Consider passing active filters from AppShell or using a shared filter context
 }
 
 export function DataAssetFeed({ initialAssets }: DataAssetFeedProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState('name-asc');
-  // Filters would be managed here, e.g. selected sources, tags from AppShell context or props
+  const { currentRegion } = useRegion(); // Get current region
 
-  // Simulate loading state
-  const [isLoading, setIsLoading] = useState(true);
+  // Simulate loading state based on initialAssets prop ready
+  const [isLoading, setIsLoading] = useState(true); 
   useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 500); // Simulate network delay
-    return () => clearTimeout(timer);
-  }, []);
+    if (initialAssets && initialAssets.length > 0) {
+      setIsLoading(false);
+    } else {
+      // If initialAssets is empty after some delay, assume loading finished or no data
+      const timer = setTimeout(() => setIsLoading(false), 1000); 
+      return () => clearTimeout(timer);
+    }
+  }, [initialAssets]);
 
 
   const filteredAndSortedAssets = useMemo(() => {
-    let assets = [...initialAssets];
+    // Make a copy to avoid mutating the prop
+    let assets = initialAssets ? [...initialAssets] : [];
 
     // Search functionality
     if (searchTerm) {
       assets = assets.filter(asset =>
         asset.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        asset.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (asset.description && asset.description.toLowerCase().includes(searchTerm.toLowerCase())) ||
         asset.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase())) ||
         asset.location.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
+    
+    // Conceptual: If Snowflake source is active, and region is specific,
+    // one might further filter assets based on region compatibility or log usage.
+    // This part is highly dependent on how AppShell's filter state is propagated.
+    // For now, we'll just log.
+    const isSnowflakeSourceActive = false; // Placeholder - this should come from actual filter state
+    if (isSnowflakeSourceActive && currentRegion !== 'GLOBAL') {
+      console.log(`DataAssetFeed: Filtering for Snowflake source in region ${currentRegion}.`);
+      // Potentially, filter assets:
+      // assets = assets.filter(asset => asset.source === 'Snowflake' && (asset.region === currentRegion || !asset.region));
+    }
+
 
     // Sorting functionality
     assets.sort((a, b) => {
@@ -56,12 +76,12 @@ export function DataAssetFeed({ initialAssets }: DataAssetFeedProps) {
     });
 
     return assets;
-  }, [initialAssets, searchTerm, sortBy]);
+  }, [initialAssets, searchTerm, sortBy, currentRegion]);
 
-  if (isLoading) {
+  if (isLoading && (!initialAssets || initialAssets.length === 0)) {
     return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-        {Array.from({ length: 8 }).map((_, index) => (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-6">
+        {Array.from({ length: 6 }).map((_, index) => (
           <div key={index} className="bg-card p-4 rounded-lg shadow-md animate-pulse">
             <div className="h-6 bg-muted rounded w-3/4 mb-2"></div>
             <div className="h-4 bg-muted rounded w-1/2 mb-4"></div>

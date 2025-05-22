@@ -5,7 +5,7 @@ import * as React from 'react';
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Bookmark, Filter, Database, Cloud, Snowflake as SnowflakeIcon, Settings, UserCircle, Search as SearchIcon, FileText, BarChart2, Tags as TagsIcon, Info, ShieldCheck, FileSpreadsheet, DatabaseZap, SlidersHorizontal } from 'lucide-react'; // Added SlidersHorizontal
+import { Home, Bookmark, Filter, Database, Cloud, Snowflake as SnowflakeIcon, Settings, UserCircle, Search as SearchIcon, FileText, BarChart2, Tags as TagsIcon, Info, ShieldCheck, FileSpreadsheet, DatabaseZap, SlidersHorizontal, Globe } from 'lucide-react'; // Added Globe
 import {
   SidebarProvider,
   Sidebar,
@@ -17,8 +17,6 @@ import {
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
-  // SidebarMenuSub, // Not used currently
-  // SidebarMenuSubButton, // Not used currently
   SidebarGroup,
   SidebarGroupLabel
 } from '@/components/ui/sidebar';
@@ -31,8 +29,9 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select'; // Added Select components
-import { useDataSource, type SampleDataSourceType } from '@/contexts/DataSourceContext'; // Added useDataSource
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useDataSource, type SampleDataSourceType } from '@/contexts/DataSourceContext';
+import { useRegion, REGIONS, type Region } from '@/contexts/RegionContext'; // Added useRegion
 
 interface NavItemProps {
   href: string;
@@ -62,6 +61,7 @@ const NavItem: React.FC<NavItemProps> = ({ href, icon, label, tooltip }) => {
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { preferredSampleSource, setPreferredSampleSource } = useDataSource();
+  const { currentRegion, setCurrentRegion } = useRegion(); // Added region context
 
   // Dummy filter state
   const [filters, setFilters] = React.useState({
@@ -158,7 +158,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="md:hidden">
              <SidebarTrigger />
           </div>
-          <div className="flex-1">
+          <div className="flex items-center gap-4"> {/* Grouped selectors */}
             {/* Global Sample Data Source Selector */}
             <div className="flex items-center gap-2">
               <SlidersHorizontal className="h-4 w-4 text-muted-foreground" />
@@ -166,7 +166,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 value={preferredSampleSource}
                 onValueChange={(value) => setPreferredSampleSource(value as SampleDataSourceType)}
               >
-                <SelectTrigger className="w-[230px] h-8 text-xs">
+                <SelectTrigger className="w-auto min-w-[180px] h-8 text-xs">
                   <SelectValue placeholder="Sample Data Source..." />
                 </SelectTrigger>
                 <SelectContent>
@@ -186,8 +186,34 @@ export function AppShell({ children }: { children: ReactNode }) {
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Region Selector */}
+            <div className="flex items-center gap-2">
+              <Globe className="h-4 w-4 text-muted-foreground" />
+              <Select
+                value={currentRegion}
+                onValueChange={(value) => setCurrentRegion(value as Region)}
+              >
+                <SelectTrigger className="w-auto min-w-[120px] h-8 text-xs">
+                  <SelectValue placeholder="Region..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectLabel className="text-xs">Region</SelectLabel>
+                    {REGIONS.map(region => (
+                      <SelectItem key={region} value={region}>
+                        {region}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-          <div className="relative flex-1 md:grow-0">
+
+          <div className="flex-1"></div> {/* Spacer */}
+
+          <div className="relative flex-shrink-0"> {/* Search input */}
             <SearchIcon className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
               type="search"
@@ -199,7 +225,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="icon" className="overflow-hidden rounded-full">
                 <Avatar>
-                  <AvatarImage src="https://placehold.co/40x40.png" alt="User Avatar" data-ai-hint="user avatar" />
+                  <AvatarImage src="https://placehold.co/40x40.png" alt="User Avatar" data-ai-hint="user avatar"/>
                   <AvatarFallback>U</AvatarFallback>
                 </Avatar>
               </Button>
