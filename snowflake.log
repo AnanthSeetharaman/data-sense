@@ -53,3 +53,21 @@
 {"level":"INFO","message":"[10:05:35.245 AM]: No config file path found. Client config will not be used."}
 {"level":"INFO","message":"[10:05:35.246 AM]: Easy Logging is disabled as no config has been found"}
 {"level":"INFO","message":"[10:05:35.255 AM]: Connection[id: ca5731d7-b8f5-4b4b-b5b3-e0828cd753be] - connected successfully after 23.459404999855906 milliseconds"}
+{"level":"INFO","message":"[10:10:17.001 AM]: Creating new connection object"}
+{"level":"INFO","message":"[10:10:17.031 AM]: Creating Connection[id: 6f2c77a4-ee19-460e-b759-03e732acc5f4] with host: CONNECT-NIELSENIQ_PROD_WEST_EU.eu.snowflakecomputing.com, account: CONNECT-NIELSENIQ_PROD_WEST_EU, accessUrl: https://CONNECT-NIELSENIQ_PROD_WEST_EU.eu.snowflakecomputing.com, user: OSAUSER, password is provided, role: undefined, database: undefined, schema: undefined, warehouse: NIELSENBUY_CS_CDM_INGESTION_3XL, region: eu, authenticator: SNOWFLAKE, ocsp mode: FAIL_OPEN, os: linux, os version: 6.6.72+"}
+{"level":"INFO","message":"[10:10:17.032 AM]: Connection[id: 6f2c77a4-ee19-460e-b759-03e732acc5f4] additional details: passcode in password is provided, passcode is not provided, private key is not provided, application: undefined, client name: snowflake-sdk, client version: 1.15.0, retry timeout: 300, private key path: undefined, private key pass is not provided, client store temporary credential: false, browser response timeout: 120000"}
+{"level":"INFO","message":"[10:10:17.036 AM]: Connection[id: 6f2c77a4-ee19-460e-b759-03e732acc5f4] - connection object created successfully."}
+{"level":"INFO","message":"[10:10:17.041 AM]: Connection[id: 6f2c77a4-ee19-460e-b759-03e732acc5f4] - connecting. Associated Snowflake domain: GLOBAL"}
+{"level":"INFO","message":"[10:10:17.043 AM]: Connection[id: 6f2c77a4-ee19-460e-b759-03e732acc5f4] - authentication successful using: SNOWFLAKE"}
+{"level":"INFO","message":"[10:10:17.045 AM]: Trying to initialize Easy Logging"}
+{"level":"INFO","message":"[10:10:17.056 AM]: No client config detected."}
+{"level":"INFO","message":"[10:10:17.057 AM]: No config file path found. Client config will not be used."}
+{"level":"INFO","message":"[10:10:17.058 AM]: Easy Logging is disabled as no config has been found"}
+{"level":"INFO","message":"[10:10:17.066 AM]: Connection[id: 6f2c77a4-ee19-460e-b759-03e732acc5f4] - connected successfully after 25.30917300004512 milliseconds"}
+{"level":"INFO","message":"[10:13:33.016 AM]: Creating new connection object"}
+{"level":"INFO","message":"[10:13:33.018 AM]: Creating Connection[id: 27ddee90-257c-4799-8088-71b28a8a6c57] with host: CONNECT-NIELSENIQ_PROD_WEST_EU.eu.snowflakecomputing.com, account: CONNECT-NIELSENIQ_PROD_WEST_EU, accessUrl: https://CONNECT-NIELSENIQ_PROD_WEST_EU.eu.snowflakecomputing.com, user: OSAUSER, password is provided, role: undefined, database: undefined, schema: undefined, warehouse: NIELSENBUY_CS_CDM_INGESTION_3XL, region: eu, authenticator: SNOWFLAKE, ocsp mode: FAIL_OPEN, os: linux, os version: 6.6.72+"}
+{"level":"INFO","message":"[10:13:33.019 AM]: Connection[id: 27ddee90-257c-4799-8088-71b28a8a6c57] additional details: passcode in password is provided, passcode is not provided, private key is not provided, application: undefined, client name: snowflake-sdk, client version: 1.15.0, retry timeout: 300, private key path: undefined, private key pass is not provided, client store temporary credential: false, browser response timeout: 120000"}
+{"level":"INFO","message":"[10:13:33.020 AM]: Connection[id: 27ddee90-257c-4799-8088-71b28a8a6c57] - connection object created successfully."}
+{"level":"INFO","message":"[10:13:33.022 AM]: Connection[id: 27ddee90-257c-4799-8088-71b28a8a6c57] - connecting. Associated Snowflake domain: GLOBAL"}
+{"level":"INFO","message":"[10:13:33.023 AM]: Connection[id: 27ddee90-257c-4799-8088-71b28a8a6c57] - authentication successful using: SNOWFLAKE"}
+{"level":"INFO","message":"[10:13:33.025 AM]: Connection[id: 27ddee90-257c-4799-8088-71b28a8a6c57] - connected successfully after 4.302350000012666 milliseconds"}
