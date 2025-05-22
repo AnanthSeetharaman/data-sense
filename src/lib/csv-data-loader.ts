@@ -111,11 +111,18 @@ export async function getAllDataAssets(): Promise<DataAsset[]> {
     const lineage = db.lineageEntries
       ?.filter(le => le.REFERENCED_OBJECT_ID === assetCsv.id || le.REFERENCING_OBJECT_ID === assetCsv.id) || [];
 
+    let isSensitiveValue = false;
+    if (typeof assetCsv.is_sensitive === 'string') {
+      isSensitiveValue = assetCsv.is_sensitive.toLowerCase() === 'true';
+    } else if (typeof assetCsv.is_sensitive === 'boolean') {
+      isSensitiveValue = assetCsv.is_sensitive;
+    }
+
     return {
       ...assetCsv,
       columnCount: parseInt(assetCsv.column_count, 10) || 0,
       sampleRecordCount: assetCsv.sample_record_count ? parseInt(assetCsv.sample_record_count, 10) : undefined,
-      isSensitive: assetCsv.is_sensitive?.toLowerCase() === 'true',
+      isSensitive: isSensitiveValue,
       schema,
       tags,
       businessGlossaryTerms,
@@ -147,3 +154,4 @@ export async function getAllUsers(): Promise<User[]> {
 export function clearCsvCache() {
   cachedDb = null;
 }
+
