@@ -12,21 +12,27 @@ import { SourceIcon } from './SourceIcon';
 import { BookmarkButton } from './BookmarkButton';
 import { AITagSuggester } from './AITagSuggester';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-// Removed Select components for local sample data source, will use global context
-import { AlertTriangle, ArrowLeft, Calendar, ClipboardCopy, Database, FileText, Layers, LinkIcon, Loader2, Lock, MapPin, MessageSquare, Share2, Tag, Users, Info, Check, FileSpreadsheet, GitFork } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { AlertTriangle, ArrowLeft, Calendar, ClipboardCopy, Database, FileText, Layers, LinkIcon, Loader2, Lock, MapPin, MessageSquare, Share2, Tag, Users, Info, Check, FileSpreadsheet, GitFork, HelpCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from "@/hooks/use-toast";
 import { fetchAndParseCsv } from '@/lib/csv-utils';
-import { useDataSource } from '@/contexts/DataSourceContext'; // Import useDataSource
+import { useDataSource } from '@/contexts/DataSourceContext'; 
 
 interface DatasetDetailViewProps {
   asset: DataAsset | null; 
 }
-
-// type SampleDataSource was local, now using global SampleDataSourceType from context
-// export type SampleDataSource = 'pg' | 'csv'; 
 
 export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProps) {
   const [asset, setAsset] = useState(initialAsset);
@@ -34,14 +40,16 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(!initialAsset);
   
-  const { preferredSampleSource } = useDataSource(); // Use global context
-
-  // Removed local sampleDataSource state:
-  // const [sampleDataSource, setSampleDataSource] = useState<SampleDataSource>('pg'); 
+  const { preferredSampleSource } = useDataSource(); 
   
   const [csvSampleData, setCsvSampleData] = useState<Record<string, any>[] | null>(null);
   const [csvLoading, setCsvLoading] = useState(false);
   const [csvError, setCsvError] = useState<string | null>(null);
+
+  const [activeTab, setActiveTab] = useState<string>('overview');
+  const [showSampleDataWarningDialog, setShowSampleDataWarningDialog] = useState(false);
+  const [pendingTabChange, setPendingTabChange] = useState<string | null>(null);
+
 
   useEffect(() => {
     if (initialAsset) {
@@ -50,7 +58,7 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
         if (initialAsset.id !== asset?.id) {
             setCsvSampleData(null);
             setCsvError(null);
-            // No need to reset sampleDataSource locally, it's global now
+            setActiveTab('overview'); 
         }
     } else {
         const timer = setTimeout(() => {
@@ -60,34 +68,36 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
     }
   }, [initialAsset, asset?.id]);
 
+  const loadCsvData = async () => {
+    if (!asset?.csvPath) return;
+    setCsvLoading(true);
+    setCsvError(null);
+    try {
+      const result = await fetchAndParseCsv(asset.csvPath);
+      if (result.errors.length > 0) {
+        console.warn('CSV parsing errors:', result.errors);
+        setCsvError(`Encountered ${result.errors.length} parsing error(s). Check console for details.`);
+      }
+      setCsvSampleData(result.data);
+    } catch (error) {
+      console.error('Failed to load or parse CSV data:', error);
+      setCsvError('Failed to load or parse CSV data. See console for details.');
+      setCsvSampleData(null);
+    } finally {
+      setCsvLoading(false);
+    }
+  };
+
   useEffect(() => {
-    // Load CSV data if 'local_csv' is preferred, asset has a path, and data isn't already loaded/loading/errored
-    if (preferredSampleSource === 'local_csv' && asset?.csvPath && !csvSampleData && !csvLoading && !csvError) {
-      const loadCsvData = async () => {
-        setCsvLoading(true);
-        setCsvError(null);
-        try {
-          const result = await fetchAndParseCsv(asset.csvPath!);
-          if (result.errors.length > 0) {
-            console.warn('CSV parsing errors:', result.errors);
-            setCsvError(`Encountered ${result.errors.length} parsing error(s). Check console for details.`);
-          }
-          setCsvSampleData(result.data);
-        } catch (error) {
-          console.error('Failed to load or parse CSV data:', error);
-          setCsvError('Failed to load or parse CSV data. See console for details.');
-          setCsvSampleData(null);
-        } finally {
-          setCsvLoading(false);
-        }
-      };
+    // Load CSV data if 'local_csv' is preferred, asset has a path, and data isn't already loaded/loading/errored, AND sample tab is active
+    if (activeTab === 'sample' && preferredSampleSource === 'local_csv' && asset?.csvPath && !csvSampleData && !csvLoading && !csvError) {
       loadCsvData();
-    } else if (preferredSampleSource === 'pg') {
+    } else if (preferredSampleSource === 'pg' && activeTab === 'sample') {
       // If switching back to PG, clear CSV specific states to ensure pgMockedSampleData is used
       setCsvSampleData(null);
       setCsvError(null);
     }
-  }, [preferredSampleSource, asset, csvSampleData, csvLoading, csvError]);
+  }, [preferredSampleSource, asset, csvSampleData, csvLoading, csvError, activeTab]);
 
 
   if (isLoading) {
@@ -148,18 +158,61 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
     });
   };
 
-  // Determine which sample data to display based on global preference
   const currentDisplaySampleData = preferredSampleSource === 'local_csv' ? csvSampleData : asset.pgMockedSampleData;
   const currentSampleSourceLabel = preferredSampleSource === 'local_csv' ? 'Local CSV' : 'PG (Simulated)';
+  const sampleDataIsPotentiallyCostly = preferredSampleSource === 'pg' || (preferredSampleSource === 'local_csv' && !!asset.csvPath);
+
+  const handleTabChange = (newTabValue: string) => {
+    if (newTabValue === 'sample' && sampleDataIsPotentiallyCostly && !currentDisplaySampleData && !csvLoading && !csvError) {
+        setPendingTabChange(newTabValue);
+        setShowSampleDataWarningDialog(true);
+    } else {
+        setActiveTab(newTabValue);
+    }
+  };
+
+  const handleProceedWithSampleData = () => {
+    if (pendingTabChange) {
+        setActiveTab(pendingTabChange);
+    }
+    setShowSampleDataWarningDialog(false);
+    setPendingTabChange(null);
+    // Data loading for CSV will be triggered by useEffect listening on activeTab
+  };
+
+  const handleCancelSampleData = () => {
+    setShowSampleDataWarningDialog(false);
+    setPendingTabChange(null);
+  };
 
   const lineageTableHeaders: (keyof RawLineageEntry)[] = [
     "REFERENCED_OBJECT_NAME", "REFERENCED_DATABASE", "REFERENCED_SCHEMA", "REFERENCED_OBJECT_DOMAIN", "DEPENDENCY_TYPE",
     "REFERENCING_OBJECT_NAME", "REFERENCING_DATABASE", "REFERENCING_SCHEMA", "REFERENCING_OBJECT_DOMAIN"
   ];
 
-
   return (
     <div className="space-y-6">
+      <AlertDialog open={showSampleDataWarningDialog} onOpenChange={setShowSampleDataWarningDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center">
+              <HelpCircle className="mr-2 h-5 w-5 text-amber-500" />
+              Confirm: Load Sample Data
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Loading sample data can be a costly and time-consuming process, especially for large datasets or remote sources. 
+              Are you sure you want to proceed?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleCancelSampleData}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleProceedWithSampleData} className="bg-primary hover:bg-primary/90">
+              Proceed
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <Card className="overflow-hidden">
         <CardHeader className="bg-muted/30 p-6">
           <div className="flex flex-col sm:flex-row items-start justify-between gap-4">
@@ -185,7 +238,7 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
         </CardContent>
       </Card>
 
-      <Tabs defaultValue="overview" className="w-full">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
         <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 mb-2">
           <TabsTrigger value="overview"><Info className="mr-1 h-4 w-4 sm:mr-2"/>Overview</TabsTrigger>
           <TabsTrigger value="schema"><Layers className="mr-1 h-4 w-4 sm:mr-2"/>Schema</TabsTrigger>
@@ -291,7 +344,6 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
         <TabsContent value="sample">
              <Card>
                 <CardHeader>
-                    {/* Removed the local Select dropdown for sample source */}
                     <CardTitle>Sample Data (Source: {currentSampleSourceLabel})</CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -350,7 +402,7 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
         </TabsContent>
 
         <TabsContent value="lineage">
-          <div className="grid md:grid-cols-1 gap-6"> {/* Changed to 1 column for better lineage display */}
+          <div className="grid md:grid-cols-1 gap-6"> 
             <Card>
                 <CardHeader><CardTitle>Lineage</CardTitle></CardHeader>
                 <CardContent>
@@ -407,3 +459,6 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
     </div>
   );
 }
+
+
+    
