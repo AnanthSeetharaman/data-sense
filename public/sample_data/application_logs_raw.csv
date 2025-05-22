@@ -1,0 +1,5 @@
+log_timestamp,service_name,log_level,message,exception_details,dt
+2024-05-23T10:00:05Z,auth-service,INFO,User login successful,,2024-05-23
+2024-05-23T10:01:15Z,payment-service,ERROR,Payment processing failed,TimeoutException,2024-05-23
+2024-05-23T10:02:00Z,order-service,WARN,Inventory low for product 123,,2024-05-23
+2024-05-23T10:03:30Z,auth-service,INFO,User logout successful,,2024-05-23

@@ -1,0 +1,6 @@
+product_id,product_name,category,price,stock_quantity
+101,SuperWidget,Widgets,19.99,150
+102,MegaGadget,Gadgets,49.50,75
+103,FlexiPlex,Tools,29.95,200
+104,UltraLoom,Textiles,99.00,50
+105,NanoBoost,Electronics,149.99,120

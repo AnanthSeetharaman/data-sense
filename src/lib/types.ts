@@ -28,6 +28,7 @@ export interface DataAsset {
     upstream: string[];
     downstream: string[];
   }; // Placeholder for lineage
-  sampleData?: Record<string, any>[]; // Placeholder for sample data
+  sampleData?: Record<string, any>[]; // Placeholder for sample data from "PG (Mocked)"
+  csvPath?: string; // Path to the CSV file in /public for sample data
   rawQuery?: string; // Example query to get this data asset
 }

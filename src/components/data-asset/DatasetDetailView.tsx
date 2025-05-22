@@ -11,37 +11,67 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { SourceIcon } from './SourceIcon';
 import { BookmarkButton } from './BookmarkButton';
 import { AITagSuggester } from './AITagSuggester';
-import { AlertTriangle, ArrowLeft, Calendar, ClipboardCopy, Database, FileText, Layers, LinkIcon, Loader2, Lock, MapPin, MessageSquare, Share2, Tag, Users, Info, Check } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { AlertTriangle, ArrowLeft, Calendar, ClipboardCopy, Database, FileText, Layers, LinkIcon, Loader2, Lock, MapPin, MessageSquare, Share2, Tag, Users, Info, Check, FileCsv } from 'lucide-react';
 import { format } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from "@/hooks/use-toast";
-import Image from 'next/image';
+import { fetchAndParseCsv, type ParseCsvResult } from '@/lib/csv-utils';
+
 
 interface DatasetDetailViewProps {
-  asset: DataAsset | null; // Allow null for loading/not found state
+  asset: DataAsset | null; 
 }
+
+type SampleDataSource = 'pg' | 'csv';
 
 export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProps) {
   const [asset, setAsset] = useState(initialAsset);
   const [newTag, setNewTag] = useState('');
   const { toast } = useToast();
-  const [isLoading, setIsLoading] = useState(!initialAsset); // True if initialAsset is null
+  const [isLoading, setIsLoading] = useState(!initialAsset);
+  const [sampleDataSource, setSampleDataSource] = useState<SampleDataSource>('pg');
+  const [csvSampleData, setCsvSampleData] = useState<Record<string, any>[] | null>(null);
+  const [csvLoading, setCsvLoading] = useState(false);
+  const [csvError, setCsvError] = useState<string | null>(null);
 
   useEffect(() => {
-    // This effect handles updates to the asset if props change, or initial loading
     if (initialAsset) {
         setAsset(initialAsset);
         setIsLoading(false);
     } else {
-        // If initialAsset is null and stays null, it implies loading or not found.
-        // A small delay to show loading, then switch to not found if still null.
         const timer = setTimeout(() => {
-            if (!asset) setIsLoading(false); // Stop loading, will show "not found"
+            if (!asset) setIsLoading(false); 
         }, 1000);
         return () => clearTimeout(timer);
     }
   }, [initialAsset, asset]);
+
+  useEffect(() => {
+    if (sampleDataSource === 'csv' && asset?.csvPath && !csvSampleData) {
+      const loadCsvData = async () => {
+        setCsvLoading(true);
+        setCsvError(null);
+        try {
+          const result = await fetchAndParseCsv(asset.csvPath!);
+          if (result.errors.length > 0) {
+            console.warn('CSV parsing errors:', result.errors);
+            setCsvError(`Encountered ${result.errors.length} parsing error(s). Check console for details.`);
+          }
+          setCsvSampleData(result.data);
+        } catch (error) {
+          console.error('Failed to load or parse CSV data:', error);
+          setCsvError('Failed to load or parse CSV data. See console for details.');
+          setCsvSampleData(null);
+        } finally {
+          setCsvLoading(false);
+        }
+      };
+      loadCsvData();
+    }
+  }, [sampleDataSource, asset, csvSampleData]);
 
 
   if (isLoading) {
@@ -76,7 +106,7 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
     } else {
        toast({ variant: "default", title: "Tag Exists", description: `"${tagToAdd}" is already added.` });
     }
-    setNewTag(''); // Clear input after adding
+    setNewTag(''); 
   };
 
   const handleRemoveTag = (tagToRemove: string) => {
@@ -100,6 +130,7 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
     });
   };
 
+  const currentSampleData = sampleDataSource === 'csv' ? csvSampleData : asset.sampleData;
 
   return (
     <div className="space-y-6">
@@ -119,7 +150,6 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
               </div>
             </div>
             <div className="flex items-center gap-2">
-                {/* Share button removed from here */}
                 <BookmarkButton assetId={asset.id} size="default" />
             </div>
           </div>
@@ -146,7 +176,7 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
                 <h3 className="font-semibold">Key Information</h3>
                 <ul className="list-disc list-inside text-sm space-y-1 text-foreground">
                   <li><span className="font-medium">Columns:</span> {asset.columnCount}</li>
-                  {asset.sampleRecordCount && <li><span className="font-medium">Sample Records:</span> {asset.sampleRecordCount.toLocaleString()}</li>}
+                  {asset.sampleRecordCount && <li><span className="font-medium">Total Sample Records (approx):</span> {asset.sampleRecordCount.toLocaleString()}</li>}
                   {asset.owner && <li><span className="font-medium">Owner:</span> {asset.owner}</li>}
                   {asset.lastModified && <li><span className="font-medium">Last Modified:</span> {format(new Date(asset.lastModified), 'PPP p')}</li>}
                   {asset.isSensitive && <li className="flex items-center"><Lock className="h-4 w-4 mr-1 text-destructive" /> <span className="font-medium text-destructive">Contains Sensitive Data</span></li>}
@@ -234,20 +264,56 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
 
         <TabsContent value="sample">
              <Card>
-                <CardHeader><CardTitle>Sample Data</CardTitle></CardHeader>
+                <CardHeader>
+                    <div className="flex justify-between items-center">
+                        <CardTitle>Sample Data</CardTitle>
+                        {asset.csvPath && ( // Only show selector if CSV path exists
+                        <div className="w-[220px]">
+                            <Select value={sampleDataSource} onValueChange={(value) => setSampleDataSource(value as SampleDataSource)}>
+                            <SelectTrigger>
+                                <SelectValue placeholder="Select sample source" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="pg">
+                                  <div className="flex items-center gap-2">
+                                    <Database className="h-4 w-4" /> PostgreSQL (Mocked)
+                                  </div>
+                                </SelectItem>
+                                <SelectItem value="csv">
+                                  <div className="flex items-center gap-2">
+                                    <FileCsv className="h-4 w-4" /> Local CSV
+                                  </div>
+                                </SelectItem>
+                            </SelectContent>
+                            </Select>
+                        </div>
+                        )}
+                    </div>
+                </CardHeader>
                 <CardContent>
-                {asset.sampleData && asset.sampleData.length > 0 ? (
+                {(sampleDataSource === 'csv' && csvLoading) ? (
+                    <div className="flex items-center justify-center py-6">
+                        <Loader2 className="h-8 w-8 animate-spin text-primary mr-2" />
+                        <p className="text-muted-foreground">Loading CSV data...</p>
+                    </div>
+                ) : (sampleDataSource === 'csv' && csvError) ? (
+                    <Alert variant="destructive">
+                        <AlertTriangle className="h-4 w-4" />
+                        <AlertTitle>Error Loading CSV</AlertTitle>
+                        <AlertDescription>{csvError}</AlertDescription>
+                    </Alert>
+                ) : (currentSampleData && currentSampleData.length > 0) ? (
                     <div className="overflow-x-auto">
                         <Table>
                             <TableHeader>
                             <TableRow>
-                                {Object.keys(asset.sampleData[0]).map(key => (
+                                {Object.keys(currentSampleData[0]).map(key => (
                                 <TableHead key={key}>{key}</TableHead>
                                 ))}
                             </TableRow>
                             </TableHeader>
                             <TableBody>
-                            {asset.sampleData.slice(0, 5).map((row, rowIndex) => ( // Limit to 5 rows for preview
+                            {currentSampleData.slice(0, 10).map((row, rowIndex) => ( // Limit to 10 rows for preview
                                 <TableRow key={rowIndex}>
                                 {Object.values(row).map((value, cellIndex) => (
                                     <TableCell key={cellIndex}>{String(value)}</TableCell>
@@ -256,12 +322,17 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
                             ))}
                             </TableBody>
                         </Table>
-                         {asset.sampleData.length > 5 && <p className="text-sm text-muted-foreground mt-2">Showing 5 of {asset.sampleData.length} sample records.</p>}
+                         {currentSampleData.length > 10 && <p className="text-sm text-muted-foreground mt-2">Showing 10 of {currentSampleData.length} sample records from {sampleDataSource === 'csv' ? 'CSV' : 'PG (Mocked)'}.</p>}
                     </div>
                 ) : (
                     <div className="text-center py-6">
                         <Database className="mx-auto h-10 w-10 text-muted-foreground mb-3" />
-                        <p className="text-muted-foreground">Sample data is not available for this asset.</p>
+                        <p className="text-muted-foreground">
+                            {sampleDataSource === 'csv' && !asset.csvPath 
+                                ? "No CSV file associated with this asset."
+                                : `Sample data is not available for this asset from the selected source (${sampleDataSource === 'csv' ? 'CSV' : 'PG (Mocked)'}).`
+                            }
+                        </p>
                     </div>
                 )}
                 </CardContent>

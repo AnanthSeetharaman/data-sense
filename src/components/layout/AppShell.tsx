@@ -5,7 +5,7 @@ import * as React from 'react';
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Bookmark, Filter, Database, Cloud, Snowflake as SnowflakeIcon, Settings, UserCircle, Search as SearchIcon, FileText, BarChart2, Tags as TagsIcon, Info } from 'lucide-react';
+import { Home, Bookmark, Filter, Database, Cloud, Snowflake as SnowflakeIcon, Settings, UserCircle, Search as SearchIcon, FileText, BarChart2, Tags as TagsIcon, Info, ShieldCheck } from 'lucide-react';
 import {
   SidebarProvider,
   Sidebar,
@@ -41,7 +41,8 @@ interface NavItemProps {
 
 const NavItem: React.FC<NavItemProps> = ({ href, icon, label, tooltip }) => {
   const pathname = usePathname();
-  const isActive = pathname === href;
+  const isActive = pathname === href || (href === "/admin/sample-viewer" && pathname.startsWith("/admin"));
+
 
   return (
     <SidebarMenuItem>
@@ -128,6 +129,16 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <Button variant="outline" size="sm" className="w-full">Apply Filters</Button>
               </div>
             </SidebarGroup>
+            <Separator className="my-2 group-data-[collapsible=icon]:hidden"/>
+             <SidebarGroup>
+                <SidebarGroupLabel className="flex items-center gap-2">
+                    <ShieldCheck className="h-4 w-4" />
+                    <span>Admin</span>
+                </SidebarGroupLabel>
+                <SidebarMenu className="mt-1">
+                     <NavItem href="/admin/sample-viewer" icon={<FileCsv />} label="Sample Data Manager" tooltip="Manage Sample CSVs" />
+                </SidebarMenu>
+             </SidebarGroup>
           </SidebarMenu>
         </SidebarContent>
         <Separator />

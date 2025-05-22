@@ -30,10 +30,12 @@ export const mockDataAssets: DataAsset[] = [
     isSensitive: true,
     lastModified: '2024-05-20T10:00:00Z',
     rawSchemaForAI: 'customer_id:INT, first_name:STRING, last_name:STRING, email:STRING, registration_date:TIMESTAMP, total_spent:DECIMAL, last_purchase_date:DATE, country:STRING, city:STRING, zip_code:STRING, is_active:BOOLEAN, notes:STRING',
-    sampleData: [
+    sampleData: [ // This will be used for "PG (Mocked)" source
       { customer_id: 1, first_name: 'John', email: 'john.doe@example.com', total_spent: 125.50, country: 'USA' },
       { customer_id: 2, first_name: 'Jane', email: 'jane.smith@example.com', total_spent: 250.75, country: 'Canada' },
+      { customer_id: 3, first_name: 'Alice', email: 'alice.w@example.com', total_spent: 99.00, country: 'UK' },
     ],
+    csvPath: '/sample_data/customer_data.csv',
     rawQuery: 'SELECT * FROM prod_db.sales_schema.customer_data LIMIT 100;',
   },
   {
@@ -63,6 +65,7 @@ export const mockDataAssets: DataAsset[] = [
       { product_id: 101, product_name: 'SuperWidget', category: 'Widgets', price: 19.99, stock_quantity: 150 },
       { product_id: 102, product_name: 'MegaGadget', category: 'Gadgets', price: 49.50, stock_quantity: 75 },
     ],
+    csvPath: '/sample_data/product_catalog_latest.csv',
     rawQuery: '-- ADLS query depends on access method (e.g., SparkSQL, Pandas)\n-- Example: spark.read.parquet("abfss://container@account.dfs.core.windows.net/path/to/product_catalog_latest.parquet").limit(100).show()',
   },
   {
@@ -87,6 +90,7 @@ export const mockDataAssets: DataAsset[] = [
       { sales_month: '2024-04-01', product_category: 'Electronics', region: 'North America', total_sales_amount: 120500.75, transaction_count: 850 },
       { sales_month: '2024-04-01', product_category: 'Books', region: 'Europe', total_sales_amount: 45200.00, transaction_count: 1200 },
     ],
+    csvPath: '/sample_data/vw_monthly_sales_summary.csv',
     rawQuery: 'SELECT * FROM REPORTING_DB.FINANCE_VIEWS.vw_monthly_sales_summary ORDER BY sales_month DESC LIMIT 100;',
   },
   {
@@ -111,9 +115,10 @@ export const mockDataAssets: DataAsset[] = [
     lastModified: '2024-05-23T00:00:00Z', // Updated continuously
     rawSchemaForAI: 'log_timestamp:TIMESTAMP, service_name:STRING, log_level:STRING, thread_id:STRING, message:STRING, exception_details:STRING, dt:DATE',
     sampleData: [
-        { log_timestamp: '2024-05-23T10:00:05Z', service_name: 'auth-service', log_level: 'INFO', message: 'User login successful' },
-        { log_timestamp: '2024-05-23T10:01:15Z', service_name: 'payment-service', log_level: 'ERROR', message: 'Payment processing failed', exception_details: 'TimeoutException' },
+        { log_timestamp: '2024-05-23T10:00:05Z', service_name: 'auth-service', log_level: 'INFO', message: 'User login successful', exception_details: null, dt: '2024-05-23' },
+        { log_timestamp: '2024-05-23T10:01:15Z', service_name: 'payment-service', log_level: 'ERROR', message: 'Payment processing failed', exception_details: 'TimeoutException', dt: '2024-05-23' },
     ],
+    csvPath: '/sample_data/application_logs_raw.csv',
     rawQuery: "SELECT * FROM staging_db.logs.application_logs_raw WHERE dt = '2024-05-22' LIMIT 100;",
   },
   {
@@ -121,10 +126,10 @@ export const mockDataAssets: DataAsset[] = [
     source: 'ADLS',
     name: 'marketing_campaign_images',
     location: 'datalake-gold/marketing/campaign_assets/images/',
-    columnCount: 0, // For a directory of files, schema might be inferred per file or not applicable at directory level
+    columnCount: 0, 
     description: 'Directory containing images used in various marketing campaigns. Files are JPEGs and PNGs.',
     tags: ['marketing', 'images', 'assets', 'campaigns'],
-    schema: [
+    schema: [ // This schema describes the *metadata* of the files, not the image content itself
       { name: 'file_name', type: 'STRING', nullable: false },
       { name: 'file_type', type: 'STRING', nullable: true },
       { name: 'size_kb', type: 'INT', nullable: true },
@@ -133,11 +138,11 @@ export const mockDataAssets: DataAsset[] = [
     owner: 'Marketing Team',
     lastModified: '2024-05-15T12:00:00Z',
     rawSchemaForAI: 'file_name:STRING, file_type:STRING, size_kb:INT, upload_date:TIMESTAMP (schema inferred for listing, not content)',
-    // Sample data would be a list of file metadata if we were to list them
-    sampleData: [
+    sampleData: [ // Sample metadata, as this isn't tabular data in the same way
         { file_name: 'summer_promo_banner.jpg', file_type: 'JPEG', size_kb: 1200, upload_date: '2024-05-10T09:30:00Z' },
         { file_name: 'logo_variant_dark.png', file_type: 'PNG', size_kb: 55, upload_date: '2024-04-20T15:00:00Z' },
     ],
+    csvPath: '/sample_data/marketing_campaign_images.csv',
     rawQuery: '-- List files in ADLS directory: dbutils.fs.ls("abfss://container@account.dfs.core.windows.net/path/to/images/")',
   },
 ];

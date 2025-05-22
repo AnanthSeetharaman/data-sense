@@ -1,0 +1,6 @@
+customer_id,first_name,email,total_spent,country
+1,John,john.doe@example.com,125.50,USA
+2,Jane,jane.smith@example.com,250.75,Canada
+3,Alice,alice.w@example.com,99.00,UK
+4,Bob,bob.b@example.com,150.25,USA
+5,Charlie,charlie.c@example.com,300.00,Australia
