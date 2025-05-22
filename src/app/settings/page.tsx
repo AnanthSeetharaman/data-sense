@@ -2,24 +2,25 @@
 "use client";
 
 import { useState } from 'react';
-import { Settings as SettingsIcon, Save, Zap } from 'lucide-react'; // Added Zap for Test Connection
+import { Settings as SettingsIcon, Save, Zap } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { useRegion, REGIONS, type Region } from '@/contexts/RegionContext'; // Import useRegion and REGIONS
+import { useRegion, REGIONS, type Region } from '@/contexts/RegionContext';
+import { testDatabaseConnection } from '@/app/actions'; // Import the server action
+import { Loader2 } from 'lucide-react';
 
-// Define a type for the URL configurations
 type SnowflakeUrlConfigs = {
-  [key in Exclude<Region, 'GLOBAL'>]?: string; // GLOBAL won't have a specific URL
+  [key in Exclude<Region, 'GLOBAL'>]?: string;
 };
 
 export default function SettingsPage() {
   const { toast } = useToast();
-  const { currentRegion } = useRegion(); // Get the current global region
+  const { currentRegion } = useRegion();
+  const [isLoadingTest, setIsLoadingTest] = useState(false);
   
-  // Initialize URL states, excluding 'GLOBAL'
   const initialUrlConfigs: SnowflakeUrlConfigs = REGIONS.reduce((acc, region) => {
     if (region !== 'GLOBAL') {
       acc[region] = '';
@@ -35,7 +36,6 @@ export default function SettingsPage() {
 
   const handleSaveChanges = () => {
     // In a real app, this would save to a backend or localStorage.
-    // For this prototype, we'll just show a toast.
     console.log("Simulating save of Snowflake URLs:", snowflakeUrls);
     toast({
       title: "Settings Saved (Simulated)",
@@ -43,36 +43,63 @@ export default function SettingsPage() {
     });
   };
 
-  const handleTestConnection = () => {
+  const handleTestConnection = async () => {
+    setIsLoadingTest(true);
     if (currentRegion === 'GLOBAL') {
       toast({
-        title: "Select a Region",
-        description: "Please select a specific region (EU, NA, APAC, CALATAM) from the global dropdown to test its configured Snowflake URL.",
+        title: "Action Needed",
+        description: "Please select a specific region (EU, NA, APAC, CALATAM) from the global dropdown to test its configured Snowflake URL. For PostgreSQL, connection details are taken from .env file.",
         variant: "default",
       });
+      // As an alternative, you could decide to test PostgreSQL here if region is GLOBAL
+      // const pgResult = await testDatabaseConnection({ region: 'GLOBAL', sourceType: 'PostgreSQL' });
+      // toast({ title: pgResult.message, description: pgResult.details, variant: pgResult.success ? "default" : "destructive"});
+      setIsLoadingTest(false);
       return;
     }
 
     const urlToTest = snowflakeUrls[currentRegion as Exclude<Region, 'GLOBAL'>];
 
-    if (urlToTest && urlToTest.trim() !== '') {
-      // Simulate a successful connection test
-      console.log(`Simulating test connection for region ${currentRegion} with URL: ${urlToTest}`);
+    if (!urlToTest || urlToTest.trim() === '') {
       toast({
-        title: "Connection Test Successful (Simulated)",
-        description: `Successfully 'connected' to Snowflake for region ${currentRegion} using URL: ${urlToTest}.`,
-      });
-    } else {
-      // Simulate a failed connection test due to missing URL
-      toast({
-        title: "Connection Test Failed (Simulated)",
+        title: "Configuration Missing",
         description: `No Snowflake URL configured for region ${currentRegion} on this page. Please enter a URL.`,
         variant: "destructive",
       });
+      setIsLoadingTest(false);
+      return;
     }
+    
+    const result = await testDatabaseConnection({
+      region: currentRegion,
+      url: urlToTest,
+      sourceType: 'Snowflake' // Assuming Snowflake for region-specific URLs
+    });
+
+    toast({
+      title: result.success ? "Connection Test Result" : "Connection Test Failed",
+      description: `${result.message}${result.details ? ` Details: ${result.details}` : ''}`,
+      variant: result.success ? "default" : "destructive",
+    });
+    setIsLoadingTest(false);
+  };
+  
+  // Button to test PostgreSQL connection (uses .env variables directly)
+  const handleTestPostgresConnection = async () => {
+    setIsLoadingTest(true);
+    const result = await testDatabaseConnection({
+      region: 'GLOBAL', // PG is not region-specific in this context
+      sourceType: 'PostgreSQL'
+    });
+     toast({
+      title: result.success ? "PostgreSQL Test Result" : "PostgreSQL Test Failed",
+      description: `${result.message}${result.details ? ` Details: ${result.details}` : ''}`,
+      variant: result.success ? "default" : "destructive",
+    });
+    setIsLoadingTest(false);
   };
 
-  // Filter out 'GLOBAL' for URL configuration inputs
+
   const configurableRegions = REGIONS.filter(r => r !== 'GLOBAL') as Exclude<Region, 'GLOBAL'>[];
 
   return (
@@ -88,10 +115,10 @@ export default function SettingsPage() {
       </header>
       <Card>
         <CardHeader>
-          <CardTitle>Snowflake Connection Settings</CardTitle>
+          <CardTitle>Snowflake Connection Settings (Region-Specific)</CardTitle>
           <CardDescription>
-            Configure Snowflake JDBC-like URLs for different regions. The app will conceptually use these when "Snowflake" source is selected.
-            The "Test Connection" button uses the currently selected global region.
+            Configure Snowflake JDBC-like URLs for different regions. The "Test Connection" button uses the currently selected global region for Snowflake.
+            Actual connection uses credentials from your `.env` file (SNOWFLAKE_ACCOUNT, SNOWFLAKE_USERNAME, etc.).
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -109,16 +136,32 @@ export default function SettingsPage() {
               </p>
             </div>
           ))}
-          <div className="flex space-x-4">
-            <Button onClick={handleSaveChanges}>
+          <div className="flex flex-wrap gap-4">
+            <Button onClick={handleSaveChanges} disabled={isLoadingTest}>
               <Save className="mr-2 h-4 w-4" />
               Save Settings (Simulated)
             </Button>
-            <Button onClick={handleTestConnection} variant="outline">
-              <Zap className="mr-2 h-4 w-4" />
-              Test Connection (Simulated)
+            <Button onClick={handleTestConnection} variant="outline" disabled={isLoadingTest}>
+              {isLoadingTest ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Zap className="mr-2 h-4 w-4" />}
+              Test Snowflake (Current Region)
             </Button>
           </div>
+        </CardContent>
+      </Card>
+
+       <Card className="mt-8">
+        <CardHeader>
+          <CardTitle>PostgreSQL Connection Settings</CardTitle>
+          <CardDescription>
+            PostgreSQL connection details are managed via environment variables in your `.env` file (e.g., POSTGRES_HOST, POSTGRES_USER).
+            This button will attempt a connection using those settings.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+           <Button onClick={handleTestPostgresConnection} variant="outline" disabled={isLoadingTest}>
+              {isLoadingTest ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Zap className="mr-2 h-4 w-4" />}
+              Test PostgreSQL Connection
+            </Button>
         </CardContent>
       </Card>
 
@@ -141,3 +184,4 @@ export default function SettingsPage() {
     </div>
   );
 }
+
