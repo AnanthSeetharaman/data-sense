@@ -4,6 +4,7 @@
 import { suggestTags as suggestTagsFlow, type SuggestTagsInput, type SuggestTagsOutput } from '@/ai/flows/suggest-tags';
 import { z } from 'zod';
 import * as Snowflake from 'snowflake-sdk';
+import type { ConnectionOptions } from 'snowflake-sdk'; // Import ConnectionOptions type
 import { Client as PgClient } from 'pg';
 
 const SuggestTagsActionInputSchema = z.object({
@@ -61,6 +62,21 @@ export interface TestConnectionOutput {
   data?: any; // To return Snowflake current time
 }
 
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === 'string') {
+    return error;
+  }
+  // Check for common error-like object structure
+  if (typeof error === 'object' && error !== null && 'message' in error && typeof (error as { message: unknown }).message === 'string') {
+    return (error as { message: string }).message;
+  }
+  return 'An unknown error occurred. Check server logs for more details.';
+}
+
+
 export async function testDatabaseConnection(input: TestConnectionInput): Promise<TestConnectionOutput> {
   console.log("Attempting to test real connection with input:", input);
 
@@ -69,8 +85,8 @@ export async function testDatabaseConnection(input: TestConnectionInput): Promis
     const username = process.env.SNOWFLAKE_USERNAME;
     const password = process.env.SNOWFLAKE_PASSWORD;
     const warehouse = process.env.SNOWFLAKE_WAREHOUSE;
-    // const database = process.env.SNOWFLAKE_DATABASE; // Optional
-    // const schema = process.env.SNOWFLAKE_SCHEMA; // Optional
+    // const database = process.env.SNOWFLAKE_DATABASE; 
+    // const schema_name = process.env.SNOWFLAKE_SCHEMA; // Renamed to avoid conflict 
 
     if (!account || !username || !password) {
       return {
@@ -87,39 +103,49 @@ export async function testDatabaseConnection(input: TestConnectionInput): Promis
       };
     }
 
-    const connection = Snowflake.createConnection({
+    const connectionOptions: ConnectionOptions = {
       account: account,
       username: username,
       password: password,
       warehouse: warehouse,
-      // database: database, // Optional: can be specified here
-      // schema: schema,     // Optional: can be specified here
-      // region: input.region.toLowerCase() === 'global' ? undefined : input.region, // region from settings can be used if your account URL is generic
-    });
+    };
+    // if (database) connectionOptions.database = database;
+    // if (schema_name) connectionOptions.schema = schema_name;
+
+    // Heuristic: only set region if input.region is specific (not GLOBAL)
+    // AND the account identifier doesn't already look like it contains a region.
+    if (input.region && input.region.toUpperCase() !== 'GLOBAL' && !account.includes('.')) {
+      connectionOptions.region = input.region.toLowerCase();
+      console.log(`Using region: ${connectionOptions.region} for Snowflake connection`);
+    } else if (account.includes('.')) {
+      console.log(`Snowflake account identifier '${account}' seems to include region information. Not explicitly setting region option.`);
+    }
+
+
+    const connection = Snowflake.createConnection(connectionOptions);
 
     try {
       await new Promise<void>((resolve, reject) => {
         connection.connect((err, conn) => {
           if (err) {
-            console.error('Snowflake connection error:', err);
-            reject(new Error(`Snowflake Connection Error: ${err.message}`));
+            console.error('Snowflake Connection Error (connect callback):', getErrorMessage(err), err);
+            reject(new Error(`Snowflake Connection Error: ${getErrorMessage(err)}`));
           } else {
-            console.log('Successfully connected to Snowflake account ID:', conn.getId());
+            // console.log('Successfully connected to Snowflake account ID:', conn.getId());
             resolve();
           }
         });
       });
 
-      // Fetch current time
       const statement = await new Promise<Snowflake.Statement>((resolve, reject) => {
         connection.execute({
           sqlText: 'SELECT CURRENT_TIMESTAMP();',
           complete: (err, stmt, rows) => {
             if (err) {
-              console.error('Failed to execute statement: ' + err.message);
-              reject(new Error(`Snowflake Query Error: ${err.message}`));
+              console.error('Snowflake Query Error (execute callback):', getErrorMessage(err), err);
+              reject(new Error(`Snowflake Query Error: ${getErrorMessage(err)}`));
             } else {
-              console.log('Executed statement with ID: ' + stmt.getStatementId());
+              // console.log('Executed statement with ID: ' + stmt.getStatementId());
               resolve(stmt);
             }
           }
@@ -129,9 +155,9 @@ export async function testDatabaseConnection(input: TestConnectionInput): Promis
       const rows = await new Promise<any[]>((resolve, reject) => {
         const stream = statement.streamRows();
         const rowData: any[] = [];
-        stream.on('error', (err) => {
-          console.error('Unable to K_TIMESTAMP stream rows: ' + err.message);
-          reject(new Error(`Snowflake Stream Error: ${err.message}`));
+        stream.on('error', (err_stream) => { 
+          console.error('Snowflake Stream Error (stream.on("error")):', getErrorMessage(err_stream), err_stream);
+          reject(new Error(`Snowflake Stream Error: ${getErrorMessage(err_stream)}`));
         });
         stream.on('data', (row) => {
           rowData.push(row);
@@ -150,20 +176,21 @@ export async function testDatabaseConnection(input: TestConnectionInput): Promis
         data: { snowflakeTime: currentTime }
       };
 
-    } catch (err: any) {
-      console.error("Snowflake operation error:", err);
+    } catch (error: unknown) { 
+      const errorMessage = getErrorMessage(error);
+      console.error("Snowflake operation error (outer catch):", errorMessage, error); 
       return { 
         success: false, 
         message: "Snowflake operation failed.", 
-        details: err.message || "Check server logs." 
+        details: errorMessage
       };
     } finally {
-      if (connection.isUp()) {
+      if (connection && connection.isUp()) {
         connection.destroy((err, conn) => {
           if (err) {
-            console.error('Failed to close Snowflake connection: ' + err.message);
+            console.error('Failed to close Snowflake connection:', getErrorMessage(err), err);
           } else {
-            console.log('Snowflake connection closed successfully.');
+            // console.log('Snowflake connection closed successfully.');
           }
         });
       }
@@ -184,17 +211,11 @@ export async function testDatabaseConnection(input: TestConnectionInput): Promis
       };
     }
     
-    const pgClient = new PgClient({
-      host,
-      user,
-      password,
-      database,
-      port,
-    });
+    const pgClient = new PgClient({ host, user, password, database, port });
 
     try {
       await pgClient.connect();
-      console.log('Successfully connected to PostgreSQL.');
+      // console.log('Successfully connected to PostgreSQL.');
       
       const result = await pgClient.query('SELECT CURRENT_TIMESTAMP;');
       const currentTime = result.rows.length > 0 ? result.rows[0].current_timestamp : 'Not found';
@@ -205,16 +226,21 @@ export async function testDatabaseConnection(input: TestConnectionInput): Promis
         details: `Current PostgreSQL time: ${currentTime}`,
         data: { postgresTime: currentTime }
       };
-    } catch (err: any) {
-      console.error("PostgreSQL connection or query error:", err);
+    } catch (error: unknown) { 
+      const errorMessage = getErrorMessage(error);
+      console.error("PostgreSQL connection or query error (outer catch):", errorMessage, error); 
       return { 
         success: false, 
         message: "PostgreSQL connection test failed.", 
-        details: err.message || "Check server logs." 
+        details: errorMessage
       };
     } finally {
-      await pgClient.end();
-      console.log('PostgreSQL connection closed.');
+      if (pgClient) {
+        await pgClient.end().catch(err_end => {
+             console.error('Failed to close PostgreSQL connection:', getErrorMessage(err_end), err_end);
+        });
+      }
+      // console.log('PostgreSQL connection closed.');
     }
   }
 
