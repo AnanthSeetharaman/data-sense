@@ -2,13 +2,13 @@
 "use client";
 
 import { useState } from 'react';
-import { Settings as SettingsIcon, Save } from 'lucide-react';
+import { Settings as SettingsIcon, Save, Zap } from 'lucide-react'; // Added Zap for Test Connection
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { REGIONS, type Region } from '@/contexts/RegionContext'; // Import REGIONS
+import { useRegion, REGIONS, type Region } from '@/contexts/RegionContext'; // Import useRegion and REGIONS
 
 // Define a type for the URL configurations
 type SnowflakeUrlConfigs = {
@@ -17,6 +17,7 @@ type SnowflakeUrlConfigs = {
 
 export default function SettingsPage() {
   const { toast } = useToast();
+  const { currentRegion } = useRegion(); // Get the current global region
   
   // Initialize URL states, excluding 'GLOBAL'
   const initialUrlConfigs: SnowflakeUrlConfigs = REGIONS.reduce((acc, region) => {
@@ -42,7 +43,36 @@ export default function SettingsPage() {
     });
   };
 
-  // Filter out 'GLOBAL' for URL configuration
+  const handleTestConnection = () => {
+    if (currentRegion === 'GLOBAL') {
+      toast({
+        title: "Select a Region",
+        description: "Please select a specific region (EU, NA, APAC, CALATAM) from the global dropdown to test its configured Snowflake URL.",
+        variant: "default",
+      });
+      return;
+    }
+
+    const urlToTest = snowflakeUrls[currentRegion as Exclude<Region, 'GLOBAL'>];
+
+    if (urlToTest && urlToTest.trim() !== '') {
+      // Simulate a successful connection test
+      console.log(`Simulating test connection for region ${currentRegion} with URL: ${urlToTest}`);
+      toast({
+        title: "Connection Test Successful (Simulated)",
+        description: `Successfully 'connected' to Snowflake for region ${currentRegion} using URL: ${urlToTest}.`,
+      });
+    } else {
+      // Simulate a failed connection test due to missing URL
+      toast({
+        title: "Connection Test Failed (Simulated)",
+        description: `No Snowflake URL configured for region ${currentRegion} on this page. Please enter a URL.`,
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Filter out 'GLOBAL' for URL configuration inputs
   const configurableRegions = REGIONS.filter(r => r !== 'GLOBAL') as Exclude<Region, 'GLOBAL'>[];
 
   return (
@@ -60,7 +90,8 @@ export default function SettingsPage() {
         <CardHeader>
           <CardTitle>Snowflake Connection Settings</CardTitle>
           <CardDescription>
-            Configure Snowflake JDBC URLs for different regions. The app will conceptually use these when "Snowflake" source is selected.
+            Configure Snowflake JDBC-like URLs for different regions. The app will conceptually use these when "Snowflake" source is selected.
+            The "Test Connection" button uses the currently selected global region.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -78,10 +109,16 @@ export default function SettingsPage() {
               </p>
             </div>
           ))}
-          <Button onClick={handleSaveChanges}>
-            <Save className="mr-2 h-4 w-4" />
-            Save Settings (Simulated)
-          </Button>
+          <div className="flex space-x-4">
+            <Button onClick={handleSaveChanges}>
+              <Save className="mr-2 h-4 w-4" />
+              Save Settings (Simulated)
+            </Button>
+            <Button onClick={handleTestConnection} variant="outline">
+              <Zap className="mr-2 h-4 w-4" />
+              Test Connection (Simulated)
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
