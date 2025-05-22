@@ -59,7 +59,7 @@ export interface TestConnectionOutput {
   success: boolean;
   message: string;
   details?: string;
-  data?: any; 
+  data?: any;
 }
 
 function getErrorMessage(error: unknown): string {
@@ -77,12 +77,15 @@ function getErrorMessage(error: unknown): string {
     } else if (typeof error === 'string' && error.trim() !== "") {
       message = error.trim();
     } else if (typeof error === 'object') {
-      if ('message' in error) {
-        const errMsg = (error as { message: unknown }).message;
-        if (typeof errMsg === 'string' && errMsg.trim() !== "") {
-          message = errMsg.trim();
-        }
+      const errObj = error as { message?: unknown, name?: unknown, code?: unknown, data?: unknown, stack?: unknown };
+      if (errObj.message && typeof errObj.message === 'string' && errObj.message.trim() !== "") {
+        message = errObj.message.trim();
+      } else if (errObj.name && typeof errObj.name === 'string' && errObj.name.trim() !== "" && errObj.name.trim() !== "Error") {
+         message = `Error: ${errObj.name.trim()}`;
+      } else if (errObj.code && (typeof errObj.code === 'string' || typeof errObj.code === 'number')) {
+        message = `Error code: ${errObj.code}`;
       }
+      // Fallback to string conversion if other properties didn't yield a good message
       if (message === 'An unknown error occurred. Check server logs for more details.' && typeof (error as any).toString === 'function') {
         const errStr = (error as any).toString();
         if (errStr !== '[object Object]' && errStr.trim() !== "") {
@@ -92,30 +95,61 @@ function getErrorMessage(error: unknown): string {
     }
   } catch (e) {
      // If getErrorMessage itself fails, provide a very generic message.
-     console.error("CRITICAL: getErrorMessage itself threw an error:", e);
+     console.error("CRITICAL: getErrorMessage itself threw an error:", e, "Original error was:", error);
      return "Failed to process the error message. Check server logs for a critical failure in error handling.";
   }
-  return message || 'An unspecified error occurred.';
+  // Ensure message is not just a period or empty.
+  if (message.trim() === "" || message.trim() === ".") {
+    message = 'An unspecified error occurred during the operation.';
+  }
+  return message;
 }
 
 
 export async function testDatabaseConnection(input: TestConnectionInput): Promise<TestConnectionOutput> {
-  console.log("Attempting to test real connection with input:", input);
+  console.log(`Attempting to test connection for ${input.sourceType} with input:`, JSON.stringify(input, null, 2));
 
   if (input.sourceType === 'Snowflake') {
     const account = process.env.SNOWFLAKE_ACCOUNT;
     const username = process.env.SNOWFLAKE_USERNAME;
     const password = process.env.SNOWFLAKE_PASSWORD;
     const warehouse = process.env.SNOWFLAKE_WAREHOUSE;
+    const authenticatorEnv = process.env.SNOWFLAKE_AUTHENTICATOR?.toUpperCase();
 
-    if (!account || !username || !password) {
+    console.log("Snowflake .env values:", {
+        account: account ? "******" : "NOT SET",
+        username: username ? "******" : "NOT SET",
+        password: password ? "******" : "NOT SET (or empty)",
+        warehouse: warehouse ? "******" : "NOT SET",
+        authenticatorEnv
+    });
+
+    if (!account || !username) {
       return {
         success: false,
         message: "Snowflake connection failed.",
-        details: "Required Snowflake environment variables (SNOWFLAKE_ACCOUNT, SNOWFLAKE_USERNAME, SNOWFLAKE_PASSWORD) are not set in .env file."
+        details: "Required Snowflake environment variables (SNOWFLAKE_ACCOUNT, SNOWFLAKE_USERNAME) are not set in .env file."
       };
     }
-     if (!warehouse) {
+
+    if (authenticatorEnv === 'EXTERNALBROWSER') {
+      console.warn("Snowflake EXTERNALBROWSER authenticator is configured. This method is not supported for non-interactive server-side connections in this prototype.");
+      return {
+        success: false,
+        message: "Snowflake connection configuration uses EXTERNALBROWSER.",
+        details: "The 'externalbrowser' authenticator method is not supported for automated server-side connections in this test. Please use username/password or key-pair authentication for server-side tests, or adapt the connection logic if using a different server-compatible SSO method."
+      };
+    }
+
+    // If not using EXTERNALBROWSER, password and warehouse are required for default username/password auth
+    if (!password) {
+      return {
+        success: false,
+        message: "Snowflake connection failed.",
+        details: "SNOWFLAKE_PASSWORD environment variable is not set or is empty. It is required for username/password authentication (when SNOWFLAKE_AUTHENTICATOR is not EXTERNALBROWSER)."
+      };
+    }
+    if (!warehouse) {
       return {
         success: false,
         message: "Snowflake connection failed.",
@@ -129,29 +163,59 @@ export async function testDatabaseConnection(input: TestConnectionInput): Promis
       password: password,
       warehouse: warehouse,
     };
-
-    if (input.region && input.region.toUpperCase() !== 'GLOBAL' && !account.includes('.')) {
-      connectionOptions.region = input.region.toLowerCase();
-      console.log(`Using region: ${connectionOptions.region} for Snowflake connection`);
-    } else if (account.includes('.')) {
-      console.log(`Snowflake account identifier '${account}' seems to include region information. Not explicitly setting region option.`);
+    
+    if (authenticatorEnv) { // For other authenticators that might still use username/password or different fields
+        connectionOptions.authenticator = authenticatorEnv;
     }
 
-    const connection = Snowflake.createConnection(connectionOptions);
+    if (input.region && input.region.toUpperCase() !== 'GLOBAL' && account && !account.includes('.')) {
+      connectionOptions.region = input.region.toLowerCase();
+      console.log(`Using region: ${connectionOptions.region} for Snowflake connection`);
+    } else if (account && account.includes('.')) {
+      console.log(`Snowflake account identifier '${account}' seems to include region information. Not explicitly setting region option.`);
+    }
+    
+    console.log("Attempting Snowflake connection with options:", JSON.stringify(connectionOptions, (key, value) => key === 'password' ? '********' : value));
+    let connection: Snowflake.Connection | null = null;
 
     try {
+      try {
+        connection = Snowflake.createConnection(connectionOptions);
+        console.log("Snowflake.createConnection successful.");
+      } catch (createError: unknown) {
+        console.error('Snowflake.createConnection Error:', createError);
+        const detailMessage = getErrorMessage(createError);
+        return {
+          success: false,
+          message: "Snowflake connection failed during creation.",
+          details: `Error creating connection object: ${detailMessage}`
+        };
+      }
+
       await new Promise<void>((resolve, reject) => {
+        if (!connection) {
+          reject(new Error("Snowflake connection object is null before connect."));
+          return;
+        }
+        console.log("Calling connection.connect()...");
         connection.connect((err, conn) => {
           if (err) {
             console.error('Snowflake Connection Error (connect callback):', err);
-            reject(err); 
+            reject(err);
           } else {
+            console.log('Snowflake connect callback successful. Conn ID:', conn.getId());
             resolve();
           }
         });
       });
 
+      console.log("Connection successful, preparing to execute query.");
       const statement = await new Promise<Snowflake.Statement>((resolve, reject) => {
+        if (!connection) {
+           reject(new Error("Snowflake connection object is null before execute."));
+           return;
+        }
+        console.log("Calling connection.execute({ sqlText: 'SELECT CURRENT_TIMESTAMP();' })...");
         connection.execute({
           sqlText: 'SELECT CURRENT_TIMESTAMP();',
           complete: (err, stmt, rows) => {
@@ -163,16 +227,18 @@ export async function testDatabaseConnection(input: TestConnectionInput): Promis
                 reject(new Error("Snowflake statement is undefined after execution."));
                 return;
               }
+              console.log('Snowflake execute callback successful. Statement ID:', stmt.getStatementId());
               resolve(stmt);
             }
           }
         });
       });
-      
+
       const rows = await new Promise<any[]>((resolve, reject) => {
+        console.log("Calling statement.streamRows()...");
         const stream = statement.streamRows();
         const rowData: any[] = [];
-        stream.on('error', (err_stream) => { 
+        stream.on('error', (err_stream) => {
           console.error('Snowflake Stream Error (stream.on("error")):', err_stream);
           reject(err_stream);
         });
@@ -180,50 +246,50 @@ export async function testDatabaseConnection(input: TestConnectionInput): Promis
           rowData.push(row);
         });
         stream.on('end', () => {
+          console.log('Snowflake streamRows ended. Row count:', rowData.length);
           resolve(rowData);
         });
       });
 
-      const currentTime = rows.length > 0 && rows[0] && typeof rows[0] === 'object' && 'CURRENT_TIMESTAMP()' in rows[0] 
-                          ? rows[0]['CURRENT_TIMESTAMP()'] 
+      const currentTime = rows.length > 0 && rows[0] && typeof rows[0] === 'object' && 'CURRENT_TIMESTAMP()' in rows[0]
+                          ? rows[0]['CURRENT_TIMESTAMP()']
                           : 'Not found';
 
-      return { 
-        success: true, 
+      return {
+        success: true,
         message: `Snowflake connection to account ${account} successful.`,
-        details: `Current Snowflake time: ${currentTime instanceof Date ? currentTime.toISOString() : currentTime}`,
-        data: { snowflakeTime: currentTime instanceof Date ? currentTime.toISOString() : currentTime }
+        details: `Current Snowflake time: ${currentTime instanceof Date ? currentTime.toISOString() : String(currentTime)}`,
+        data: { snowflakeTime: currentTime instanceof Date ? currentTime.toISOString() : String(currentTime) }
       };
 
-    } catch (error: unknown) { 
+    } catch (error: unknown) {
       let detailMessage = 'Failed during Snowflake operation. Check server logs.';
       try {
         detailMessage = getErrorMessage(error);
       } catch (e_getMsg) {
         console.error("CRITICAL: getErrorMessage failed during Snowflake error handling:", e_getMsg, "Original error:", error);
       }
-      console.error("Snowflake operation error (outer catch):", detailMessage, error); 
-      return { 
-        success: false, 
-        message: "Snowflake operation failed.", 
+      console.error("Snowflake operation error (outer catch):", detailMessage, error);
+      return {
+        success: false,
+        message: "Snowflake operation failed.",
         details: detailMessage
       };
     } finally {
       if (connection && connection.isUp()) {
+        console.log("Attempting to destroy Snowflake connection.");
         try {
-            await new Promise<void>((resolve, reject) => { // Added reject for completeness
+            await new Promise<void>((resolve, reject) => { 
                 connection.destroy((err, conn) => {
                     if (err) {
                         console.error('Error destroying Snowflake connection:', getErrorMessage(err), err);
-                        // Do not reject here to avoid masking a primary error from the try block
-                        // or causing an unhandled rejection if this is the only error.
-                        // The primary operation's success/failure should dictate the return.
+                    } else {
+                        console.log('Snowflake connection destroyed successfully.');
                     }
-                    resolve(); // Always resolve to indicate attempt was made.
+                    resolve(); 
                 });
             });
         } catch (destroyError) {
-            // This catch is for issues with the Promise wrapper itself, not destroy's callback error.
             console.error('Error in Snowflake connection.destroy promise wrapper:', getErrorMessage(destroyError), destroyError);
         }
       }
@@ -250,35 +316,34 @@ export async function testDatabaseConnection(input: TestConnectionInput): Promis
       await pgClient.connect();
       const result = await pgClient.query('SELECT CURRENT_TIMESTAMP;');
       const currentTime = result.rows.length > 0 && result.rows[0] && typeof result.rows[0] === 'object' && 'current_timestamp' in result.rows[0]
-                          ? result.rows[0].current_timestamp 
+                          ? result.rows[0].current_timestamp
                           : 'Not found';
 
-      return { 
-        success: true, 
+      return {
+        success: true,
         message: `PostgreSQL connection to ${host} successful.`,
-        details: `Current PostgreSQL time: ${currentTime instanceof Date ? currentTime.toISOString() : currentTime}`,
-        data: { postgresTime: currentTime instanceof Date ? currentTime.toISOString() : currentTime }
+        details: `Current PostgreSQL time: ${currentTime instanceof Date ? currentTime.toISOString() : String(currentTime)}`,
+        data: { postgresTime: currentTime instanceof Date ? currentTime.toISOString() : String(currentTime) }
       };
-    } catch (error: unknown) { 
+    } catch (error: unknown) {
       let detailMessage = 'Failed during PostgreSQL operation. Check server logs.';
       try {
         detailMessage = getErrorMessage(error);
       } catch (e_getMsg) {
         console.error("CRITICAL: getErrorMessage failed during PostgreSQL error handling:", e_getMsg, "Original error:", error);
       }
-      console.error("PostgreSQL connection or query error (outer catch):", detailMessage, error); 
-      return { 
-        success: false, 
-        message: "PostgreSQL connection test failed.", 
+      console.error("PostgreSQL connection or query error (outer catch):", detailMessage, error);
+      return {
+        success: false,
+        message: "PostgreSQL connection test failed.",
         details: detailMessage
       };
     } finally {
-      if (pgClient) { // pgClient might not be initialized if env vars are missing
+      if (pgClient) { 
         try {
             await pgClient.end();
         } catch (endError) {
             console.error('Error closing PostgreSQL connection:', getErrorMessage(endError), endError);
-            // Do not re-throw from finally
         }
       }
     }
