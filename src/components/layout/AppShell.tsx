@@ -5,7 +5,7 @@ import * as React from 'react';
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Bookmark, Filter, Database, Cloud, Snowflake as SnowflakeIcon, Settings, UserCircle, Search as SearchIcon, FileText, BarChart2, Tags as TagsIcon, Info, ShieldCheck } from 'lucide-react';
+import { Home, Bookmark, Filter, Database, Cloud, Snowflake as SnowflakeIcon, Settings, UserCircle, Search as SearchIcon, FileText, BarChart2, Tags as TagsIcon, Info, ShieldCheck, FileSpreadsheet } from 'lucide-react';
 import {
   SidebarProvider,
   Sidebar,
@@ -136,7 +136,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                     <span>Admin</span>
                 </SidebarGroupLabel>
                 <SidebarMenu className="mt-1">
-                     <NavItem href="/admin/sample-viewer" icon={<FileCsv />} label="Sample Data Manager" tooltip="Manage Sample CSVs" />
+                     <NavItem href="/admin/sample-viewer" icon={<FileSpreadsheet />} label="Sample Data Manager" tooltip="Manage Sample CSVs" />
                 </SidebarMenu>
              </SidebarGroup>
           </SidebarMenu>

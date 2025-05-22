@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Loader2, FileCsv, UploadCloud, Download, AlertTriangle, Settings } from 'lucide-react';
+import { Loader2, FileSpreadsheet, UploadCloud, Download, AlertTriangle, Settings } from 'lucide-react';
 import { fetchAndParseCsv, convertToCsvString, type ParseCsvResult } from '@/lib/csv-utils';
 import { useToast } from "@/hooks/use-toast";
 
@@ -229,18 +229,18 @@ export default function AdminSampleViewerPage() {
               </div>
             ) : (
                 <div className="text-center py-10">
-                    <FileCsv className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+                    <FileSpreadsheet className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
                     <p className="text-muted-foreground">No sample data found in the CSV or the CSV is empty for {selectedAsset?.name}.</p>
                 </div>
             )
           ) : selectedAssetId ? (
              <div className="text-center py-10">
-                <FileCsv className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+                <FileSpreadsheet className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
                 <p className="text-muted-foreground">Could not load data for {selectedAsset?.name}.</p>
             </div>
           ) : (
             <div className="text-center py-10">
-              <FileCsv className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+              <FileSpreadsheet className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
               <p className="text-muted-foreground">Select a data asset to view its sample CSV data.</p>
             </div>
           )}

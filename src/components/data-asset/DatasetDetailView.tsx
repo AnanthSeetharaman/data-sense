@@ -13,7 +13,7 @@ import { BookmarkButton } from './BookmarkButton';
 import { AITagSuggester } from './AITagSuggester';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { AlertTriangle, ArrowLeft, Calendar, ClipboardCopy, Database, FileText, Layers, LinkIcon, Loader2, Lock, MapPin, MessageSquare, Share2, Tag, Users, Info, Check, FileCsv } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Calendar, ClipboardCopy, Database, FileText, Layers, LinkIcon, Loader2, Lock, MapPin, MessageSquare, Share2, Tag, Users, Info, Check, FileSpreadsheet } from 'lucide-react';
 import { format } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -281,7 +281,7 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
                                 </SelectItem>
                                 <SelectItem value="csv">
                                   <div className="flex items-center gap-2">
-                                    <FileCsv className="h-4 w-4" /> Local CSV
+                                    <FileSpreadsheet className="h-4 w-4" /> Local CSV
                                   </div>
                                 </SelectItem>
                             </SelectContent>
