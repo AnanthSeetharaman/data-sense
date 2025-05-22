@@ -5,7 +5,7 @@ import * as React from 'react';
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Bookmark, Filter, Database, Cloud, Snowflake as SnowflakeIcon, Settings, UserCircle, Search as SearchIcon, FileText, BarChart2, Tags as TagsIcon, Info, ShieldCheck, FileSpreadsheet } from 'lucide-react';
+import { Home, Bookmark, Filter, Database, Cloud, Snowflake as SnowflakeIcon, Settings, UserCircle, Search as SearchIcon, FileText, BarChart2, Tags as TagsIcon, Info, ShieldCheck, FileSpreadsheet, DatabaseZap } from 'lucide-react';
 import {
   SidebarProvider,
   Sidebar,
@@ -41,7 +41,7 @@ interface NavItemProps {
 
 const NavItem: React.FC<NavItemProps> = ({ href, icon, label, tooltip }) => {
   const pathname = usePathname();
-  const isActive = pathname === href || (href === "/admin/sample-viewer" && pathname.startsWith("/admin"));
+  const isActive = pathname === href || (href.startsWith("/admin") && pathname.startsWith("/admin") && href.includes(pathname.split("/").pop() || ""));
 
 
   return (
@@ -137,6 +137,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 </SidebarGroupLabel>
                 <SidebarMenu className="mt-1">
                      <NavItem href="/admin/sample-viewer" icon={<FileSpreadsheet />} label="Sample Data Manager" tooltip="Manage Sample CSVs" />
+                     <NavItem href="/admin/asset-data-manager" icon={<DatabaseZap />} label="Asset Data Manager" tooltip="Manage Full Asset CSVs" />
                 </SidebarMenu>
              </SidebarGroup>
           </SidebarMenu>
