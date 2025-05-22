@@ -8,14 +8,16 @@ import { SearchInput } from '@/components/common/SearchInput';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Info, Loader2, Filter as FilterIcon } from "lucide-react";
-import { useFilters, type FilterValues } from '@/contexts/FilterContext';
+import { useFilters, type FilterValues, type DataSourceType } from '@/contexts/FilterContext'; // Updated FilterValues and DataSourceType
+import { useRegion } from '@/contexts/RegionContext'; // Import useRegion
 
 interface DataAssetFeedProps {
-  initialAssets: DataAsset[];
+  initialAssets: DataAsset[]; // This will be empty as per new requirement
 }
 
 export function DataAssetFeed({ initialAssets }: DataAssetFeedProps) {
   const { appliedFilters, filtersApplied } = useFilters();
+  const { currentRegion } = useRegion(); // Get current region
   const [displayedAssets, setDisplayedAssets] = useState<DataAsset[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,42 +30,39 @@ export function DataAssetFeed({ initialAssets }: DataAssetFeedProps) {
     setError(null);
     setDisplayedAssets([]);
 
+    if (!currentFilters.source) {
+      setError("No data source selected. Please select a source and apply filters.");
+      setIsLoading(false);
+      return;
+    }
+
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9002';
     let fetchedData: DataAsset[] = [];
+    let fetchUrl = '';
 
     try {
-      if (currentFilters.sources.Snowflake) {
-        const response = await fetch(`${apiUrl}/api/snowflake-assets`);
-        if (!response.ok) {
-          const errData = await response.json().catch(() => ({}));
-          throw new Error(errData.error || `Failed to fetch Snowflake assets: ${response.statusText}`);
-        }
-        fetchedData = await response.json();
+      if (currentFilters.source === 'Snowflake') {
+        fetchUrl = `${apiUrl}/api/snowflake-assets`;
+        // Potentially pass region to the API if backend supports it: ?region=${currentRegion}
+        console.log(`Fetching from Snowflake API for region: ${currentRegion}`);
+      } else if (currentFilters.source === 'MetaStore') {
+        fetchUrl = `${apiUrl}/api/csv-assets`; // Represents Hive, ADLS, etc.
+        console.log("Fetching from MetaStore (CSV) API");
       } else {
-        let csvApiUrl = `${apiUrl}/api/csv-assets`;
-        // This part could be enhanced to pass specific source filters to the API
-        // For now, we fetch all CSV assets if Snowflake is not selected.
-        const response = await fetch(csvApiUrl);
-        if (!response.ok) {
-          const errData = await response.json().catch(() => ({}));
-          throw new Error(errData.error || `Failed to fetch CSV assets: ${response.statusText}`);
-        }
-        let csvAssets: DataAsset[] = await response.json();
-
-        // Client-side filter by selected non-Snowflake sources if any are checked
-        const activeNonSnowflakeSources = Object.entries(currentFilters.sources)
-          .filter(([source, isActive]) => source !== 'Snowflake' && isActive)
-          .map(([source]) => source);
-
-        if (activeNonSnowflakeSources.length > 0) {
-            csvAssets = csvAssets.filter(asset => 
-                activeNonSnowflakeSources.includes(asset.source)
-            );
-        }
-        fetchedData = csvAssets;
+        setError(`Unsupported data source: ${currentFilters.source}`);
+        setIsLoading(false);
+        return;
       }
+      
+      const response = await fetch(fetchUrl);
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || `Failed to fetch ${currentFilters.source} assets: ${response.statusText}`);
+      }
+      fetchedData = await response.json();
 
-      // Client-side tag filtering
+
+      // Client-side tag filtering (remains the same)
       if (currentFilters.tags) {
         const filterTags = currentFilters.tags.toLowerCase().split(',').map(t => t.trim()).filter(t => t);
         if (filterTags.length > 0) {
@@ -85,12 +84,17 @@ export function DataAssetFeed({ initialAssets }: DataAssetFeedProps) {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [currentRegion]); // Added currentRegion to dependency array
 
 
   useEffect(() => {
     if (filtersApplied && appliedFilters) {
-      fetchData(appliedFilters);
+      if (appliedFilters.source) { // Only fetch if a source is selected
+        fetchData(appliedFilters);
+      } else {
+        setDisplayedAssets([]); // Clear assets if no source is selected but filters applied
+        setError(null); // Clear error if filters were applied without a source
+      }
     } else if (!filtersApplied) {
       setDisplayedAssets([]); 
       setError(null);
@@ -134,7 +138,7 @@ export function DataAssetFeed({ initialAssets }: DataAssetFeedProps) {
         <FilterIcon className="h-4 w-4" />
         <AlertTitle>No Filters Applied</AlertTitle>
         <AlertDescription>
-          Please select filters from the sidebar and click "Apply Filters" to discover data assets.
+          Please select a data source and any desired tags from the sidebar, then click "Apply Filters" to discover data assets.
         </AlertDescription>
       </Alert>
     );
@@ -158,6 +162,21 @@ export function DataAssetFeed({ initialAssets }: DataAssetFeedProps) {
         </Alert>
      );
   }
+  
+  // If filters have been applied, but no source was selected (e.g., filters cleared then "apply" clicked)
+  // or if a source was selected but resulted in no data.
+  if (filtersApplied && (!appliedFilters?.source && !isLoading && !error)) {
+     return (
+      <Alert className="mt-6">
+        <FilterIcon className="h-4 w-4" />
+        <AlertTitle>Select a Data Source</AlertTitle>
+        <AlertDescription>
+          Please select a data source (MetaStore or Snowflake) and click "Apply Filters" to view assets.
+        </AlertDescription>
+      </Alert>
+    );
+  }
+
 
   return (
     <div>
@@ -190,7 +209,7 @@ export function DataAssetFeed({ initialAssets }: DataAssetFeedProps) {
             <Info className="h-4 w-4" />
             <AlertTitle>No Data Assets Found</AlertTitle>
             <AlertDescription>
-              No assets match your current filter criteria. Try adjusting your filters or check if the selected data source is available.
+              No assets match your current filter criteria for the selected source ({appliedFilters?.source || 'N/A'}). Try adjusting your filters or ensuring the source is available.
             </AlertDescription>
           </Alert>
       ) : (

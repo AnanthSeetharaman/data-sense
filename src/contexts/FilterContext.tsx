@@ -3,22 +3,20 @@
 
 import type { ReactNode } from 'react';
 import { createContext, useContext, useState, useMemo, useCallback } from 'react';
-import type { DataAsset } from '@/lib/types'; // Assuming DataAsset type is needed or can be generic
+
+// Define the types for the data sources
+export type DataSourceType = 'MetaStore' | 'Snowflake';
 
 export interface FilterValues {
-  sources: {
-    Hive: boolean;
-    ADLS: boolean;
-    Snowflake: boolean;
-  };
-  tags: string; // Comma-separated string or implement more complex tag filtering
+  source: DataSourceType | null; // A single source or null if none selected
+  tags: string; 
 }
 
 interface FilterContextType {
   appliedFilters: FilterValues | null;
   filtersApplied: boolean;
   applyFilters: (filters: FilterValues) => void;
-  clearFilters: () => void; // Optional: for a reset functionality
+  clearFilters: () => void;
 }
 
 const FilterContext = createContext<FilterContextType | undefined>(undefined);
@@ -33,9 +31,8 @@ export function FilterProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const clearFilters = useCallback(() => {
-    setAppliedFilters(null);
+    setAppliedFilters({ source: null, tags: '' }); // Reset to a defined state
     setFiltersApplied(false);
-    // Potentially reset UI filter selections in AppShell if needed via another callback
   }, []);
 
   const value = useMemo(() => ({

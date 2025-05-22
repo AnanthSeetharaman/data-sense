@@ -2,7 +2,6 @@
 "use client";
 
 import { useState, useEffect, ChangeEvent } from 'react';
-// Removed DataAsset and getAllDataAssets imports
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -33,7 +32,6 @@ export default function AssetDataManagerPage() {
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
 
-  // Removed useEffect for loading assets
 
   useEffect(() => {
     if (selectedCsvPath) {
@@ -124,6 +122,7 @@ export default function AssetDataManagerPage() {
         setIsLoading(false);
       }
     }
+    // Reset file input to allow re-uploading the same file name
     event.target.value = ''; 
   };
 
@@ -136,7 +135,7 @@ export default function AssetDataManagerPage() {
     <div className="container mx-auto py-8 space-y-6">
       <header className="mb-8">
         <h1 className="text-3xl font-bold text-foreground flex items-center">
-          <List className="mr-3 h-8 w-8 text-primary" />
+          <List className="mr-3 h-8 w-8 text-primary" /> {/* Changed icon */}
           Admin: Database Mock CSV Manager
         </h1>
         <p className="text-muted-foreground">
@@ -156,7 +155,7 @@ export default function AssetDataManagerPage() {
       <Card>
         <CardHeader>
           <CardTitle>Select Database Mock CSV to Manage</CardTitle>
-          <div className="flex flex-col sm:flex-row gap-4 mt-4">
+          <div className="flex flex-col sm:flex-row flex-wrap gap-4 mt-4"> {/* Added flex-wrap */}
             <div className="flex-grow sm:max-w-md">
               <Select onValueChange={setSelectedCsvPath} value={selectedCsvPath || ""} disabled={isLoading}>
                 <SelectTrigger>
@@ -176,9 +175,9 @@ export default function AssetDataManagerPage() {
                 <Button onClick={handleDownloadCsv} disabled={isLoading || !currentCsvData || currentCsvData.length === 0}>
                   <Download className="mr-2 h-4 w-4" /> Download Displayed CSV
                 </Button>
-                <div className="relative">
+                <div className="relative"> {/* Ensure button and input are siblings for proper styling of input overlay */}
                   <Button asChild variant="outline" disabled={isLoading}>
-                    <label htmlFor="csv-upload-db-mock" className="cursor-pointer">
+                    <label htmlFor="csv-upload-db-mock" className="cursor-pointer flex items-center"> {/* Added flex items-center for better icon alignment */}
                       <UploadCloud className="mr-2 h-4 w-4" /> Upload & View New CSV
                     </label>
                   </Button>
@@ -196,7 +195,7 @@ export default function AssetDataManagerPage() {
           </div>
         </CardHeader>
         <CardContent>
-          {isLoading && !currentCsvData ? ( 
+          {isLoading && !currentCsvData ? ( // More specific loading check
             <div className="flex items-center justify-center py-10">
               <Loader2 className="h-12 w-12 animate-spin text-primary" />
               <p className="ml-4 text-lg text-muted-foreground">Loading CSV data...</p>
@@ -222,7 +221,7 @@ export default function AssetDataManagerPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {currentCsvData.slice(0, 20).map((row, rowIndex) => (
+                    {currentCsvData.slice(0, 20).map((row, rowIndex) => ( // Show first 20 records
                       <TableRow key={rowIndex}>
                         {headers.map(header => (
                           <TableCell key={`${rowIndex}-${header}`}>{String(row[header] ?? '')}</TableCell>
@@ -233,7 +232,7 @@ export default function AssetDataManagerPage() {
                 </Table>
                 {currentCsvData.length > 20 && <p className="text-sm text-muted-foreground mt-2">Showing first 20 of {currentCsvData.length} records from CSV.</p>}
               </div>
-            ) : ( 
+            ) : ( // Case: CSV is valid and loaded but empty
                 <div className="text-center py-10">
                     <FileSpreadsheet className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
                     <p className="text-muted-foreground">
@@ -241,14 +240,14 @@ export default function AssetDataManagerPage() {
                     </p>
                 </div>
             )
-          ) : selectedCsvPath ? ( 
+          ) : selectedCsvPath ? ( // Case: selectedCsvPath is set, but currentCsvData is null (implies loading failed and error was cleared or didn't set)
              <div className="text-center py-10">
                 <FileSpreadsheet className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
                  <p className="text-muted-foreground">
                   Could not load CSV data for {DB_MOCK_CSV_FILES.find(f => f.path === selectedCsvPath)?.name}.
                 </p>
             </div>
-          ) : ( 
+          ) : ( // Initial state, no CSV selected
             <div className="text-center py-10">
               <DatabaseZap className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
               <p className="text-muted-foreground">Select a database mock CSV file to view or manage its content.</p>
@@ -259,4 +258,3 @@ export default function AssetDataManagerPage() {
     </div>
   );
 }
-

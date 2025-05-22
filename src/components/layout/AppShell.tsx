@@ -26,13 +26,13 @@ import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Checkbox } from "@/components/ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"; // Changed from Checkbox
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useDataSource, type SampleDataSourceType } from '@/contexts/DataSourceContext';
 import { useRegion, REGIONS, type Region } from '@/contexts/RegionContext';
-import { useFilters, type FilterValues } from '@/contexts/FilterContext';
+import { useFilters, type FilterValues, type DataSourceType } from '@/contexts/FilterContext'; // Updated FilterValues and added DataSourceType
 
 interface NavItemProps {
   href: string;
@@ -63,10 +63,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { currentRegion, setCurrentRegion } = useRegion();
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
-  const { applyFilters: applyGlobalFilters, clearFilters: clearGlobalFilters } = useFilters();
+  const { applyFilters: applyGlobalFilters, clearFilters: clearGlobalFiltersFromContext } = useFilters();
 
   const [currentFilterSelections, setCurrentFilterSelections] = useState<FilterValues>({
-    sources: { Hive: false, ADLS: false, Snowflake: false },
+    source: null, // Changed from object to single value or null
     tags: '',
   });
 
@@ -74,10 +74,10 @@ export function AppShell({ children }: { children: ReactNode }) {
     setMounted(true);
   }, []);
 
-  const handleSourceChange = (source: keyof FilterValues['sources']) => {
+  const handleSourceSelect = (source: DataSourceType) => {
     setCurrentFilterSelections(prev => ({
       ...prev,
-      sources: { ...prev.sources, [source]: !prev.sources[source] }
+      source: source === prev.source ? null : source, // Allow deselect by clicking again (optional) or just set
     }));
   };
 
@@ -91,24 +91,22 @@ export function AppShell({ children }: { children: ReactNode }) {
   
   const handleClearFiltersClick = () => {
     setCurrentFilterSelections({
-      sources: { Hive: false, ADLS: false, Snowflake: false },
+      source: null, // Reset to null
       tags: '',
     });
-    clearGlobalFilters();
+    clearGlobalFiltersFromContext();
   };
-
 
   const isDatasetDetailPage = pathname.startsWith('/datasets/');
 
-  const sourceDisplayNames: Record<keyof FilterValues['sources'], string> = {
-    Hive: 'Hive',
-    ADLS: 'ADLS',
+  const sourceDisplayNames: Record<DataSourceType, string> = {
+    MetaStore: 'MetaStore', // Represents Hive/ADLS/CSV backend
     Snowflake: 'Snowflake [ LIVE ]'
   };
 
   return (
     <SidebarProvider defaultOpen={!isDatasetDetailPage}>
-      <TooltipProvider> {/* Ensure TooltipProvider wraps components using Tooltip */}
+      <TooltipProvider>
         <Sidebar side="left" variant="sidebar" collapsible="icon">
           <SidebarHeader className="p-2 justify-between items-center">
             <Link href="/" className="flex items-center gap-2 group-data-[collapsible=icon]:hidden">
@@ -132,20 +130,20 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <div className="space-y-4 px-2 mt-2 group-data-[collapsible=icon]:hidden">
                   <div>
                     <Label className="text-sm font-medium">Data Source</Label>
-                    <div className="mt-2 space-y-2">
-                      {(Object.keys(sourceDisplayNames) as Array<keyof FilterValues['sources']>).map((source) => (
-                        <div key={source} className="flex items-center space-x-2">
-                          <Checkbox
-                            id={`filter-source-${source.toLowerCase()}`}
-                            checked={currentFilterSelections.sources[source]}
-                            onCheckedChange={() => handleSourceChange(source)}
-                          />
-                          <Label htmlFor={`filter-source-${source.toLowerCase()}`} className="text-sm font-normal">
-                            {sourceDisplayNames[source]}
+                    <RadioGroup
+                      value={currentFilterSelections.source || ""} // Handle null for RadioGroup value
+                      onValueChange={(value) => handleSourceSelect(value as DataSourceType)}
+                      className="mt-2 space-y-1"
+                    >
+                      {(Object.keys(sourceDisplayNames) as DataSourceType[]).map((sourceKey) => (
+                        <div key={sourceKey} className="flex items-center space-x-2">
+                          <RadioGroupItem value={sourceKey} id={`filter-source-${sourceKey.toLowerCase()}`} />
+                          <Label htmlFor={`filter-source-${sourceKey.toLowerCase()}`} className="text-sm font-normal cursor-pointer">
+                            {sourceDisplayNames[sourceKey]}
                           </Label>
                         </div>
                       ))}
-                    </div>
+                    </RadioGroup>
                   </div>
                   <div>
                     <Label htmlFor="filter-tags" className="text-sm font-medium">Tags</Label>
@@ -169,7 +167,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                   </SidebarGroupLabel>
                   <SidebarMenu className="mt-1">
                        <NavItem href="/admin/sample-viewer" icon={<FileSpreadsheet />} label="Sample Data Manager" tooltip="Manage Sample CSVs" />
-                       <NavItem href="/admin/asset-data-manager" icon={<List />} label="Asset Data Manager" tooltip="Manage Full Asset CSVs" />
+                       <NavItem href="/admin/asset-data-manager" icon={<List />} label="DB Mock CSV Manager" tooltip="Manage Full Asset CSVs" />
                   </SidebarMenu>
                </SidebarGroup>
             </SidebarMenu>
@@ -280,4 +278,3 @@ export function AppShell({ children }: { children: ReactNode }) {
     </SidebarProvider>
   );
 }
-
