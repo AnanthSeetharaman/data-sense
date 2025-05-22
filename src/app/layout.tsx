@@ -5,10 +5,11 @@ import './globals.css';
 import { AppShell } from '@/components/layout/AppShell';
 import { Toaster } from "@/components/ui/toaster";
 import { DataSourceProvider } from '@/contexts/DataSourceContext';
-import { RegionProvider } from '@/contexts/RegionContext'; // Added import
+import { RegionProvider } from '@/contexts/RegionContext';
+import { ThemeProvider } from 'next-themes'; // Added import
 
 const inter = Inter({
-  variable: '--font-geist-sans', // Keep existing variable name
+  variable: '--font-geist-sans',
   subsets: ['latin'],
 });
 
@@ -23,14 +24,16 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={inter.variable}>
+    <html lang="en" className={inter.variable} suppressHydrationWarning> {/* Added suppressHydrationWarning for next-themes */}
       <body className="antialiased">
-        <DataSourceProvider>
-          <RegionProvider> {/* Added RegionProvider */}
-            <AppShell>{children}</AppShell>
-          </RegionProvider>
-        </DataSourceProvider>
-        <Toaster />
+        <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}> {/* Added ThemeProvider */}
+          <DataSourceProvider>
+            <RegionProvider>
+              <AppShell>{children}</AppShell>
+            </RegionProvider>
+          </DataSourceProvider>
+          <Toaster />
+        </ThemeProvider>
       </body>
     </html>
   );

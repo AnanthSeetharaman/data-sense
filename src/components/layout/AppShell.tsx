@@ -5,7 +5,8 @@ import * as React from 'react';
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Bookmark, Filter, Database, Cloud, Snowflake as SnowflakeIcon, Settings, UserCircle, Search as SearchIcon, FileText, BarChart2, Tags as TagsIcon, Info, ShieldCheck, FileSpreadsheet, DatabaseZap, SlidersHorizontal, Globe } from 'lucide-react'; // Added Globe
+import { Home, Bookmark, Filter, Database, Cloud, Snowflake as SnowflakeIcon, Settings, UserCircle, Search as SearchIcon, FileText, BarChart2, Tags as TagsIcon, Info, ShieldCheck, FileSpreadsheet, DatabaseZap, SlidersHorizontal, Globe, PanelLeft, Sun, Moon } from 'lucide-react'; // Added PanelLeft, Sun, Moon
+import { useTheme } from 'next-themes'; // Added useTheme
 import {
   SidebarProvider,
   Sidebar,
@@ -31,7 +32,7 @@ import { Label } from "@/components/ui/label";
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useDataSource, type SampleDataSourceType } from '@/contexts/DataSourceContext';
-import { useRegion, REGIONS, type Region } from '@/contexts/RegionContext'; // Added useRegion
+import { useRegion, REGIONS, type Region } from '@/contexts/RegionContext';
 
 interface NavItemProps {
   href: string;
@@ -61,7 +62,8 @@ const NavItem: React.FC<NavItemProps> = ({ href, icon, label, tooltip }) => {
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { preferredSampleSource, setPreferredSampleSource } = useDataSource();
-  const { currentRegion, setCurrentRegion } = useRegion(); // Added region context
+  const { currentRegion, setCurrentRegion } = useRegion();
+  const { theme, setTheme } = useTheme(); // Added for theme toggle
 
   // Dummy filter state
   const [filters, setFilters] = React.useState({
@@ -159,7 +161,6 @@ export function AppShell({ children }: { children: ReactNode }) {
              <SidebarTrigger />
           </div>
           <div className="flex items-center gap-4"> {/* Grouped selectors */}
-            {/* Global Sample Data Source Selector */}
             <div className="flex items-center gap-2">
               <SlidersHorizontal className="h-4 w-4 text-muted-foreground" />
               <Select
@@ -187,7 +188,6 @@ export function AppShell({ children }: { children: ReactNode }) {
               </Select>
             </div>
 
-            {/* Region Selector */}
             <div className="flex items-center gap-2">
               <Globe className="h-4 w-4 text-muted-foreground" />
               <Select
@@ -213,32 +213,40 @@ export function AppShell({ children }: { children: ReactNode }) {
 
           <div className="flex-1"></div> {/* Spacer */}
 
-          <div className="relative flex-shrink-0"> {/* Search input */}
-            <SearchIcon className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <div className="flex items-center gap-2"> {/* Right-aligned items */}
             <Input
               type="search"
               placeholder="Search datasets..."
-              className="w-full rounded-lg bg-background pl-8 md:w-[200px] lg:w-[320px]"
+              className="w-full rounded-lg bg-background pl-8 md:w-[200px] lg:w-[320px] h-9 text-sm"
             />
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+              className="h-9 w-9"
+            >
+              {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              <span className="sr-only">Toggle theme</span>
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon" className="overflow-hidden rounded-full h-9 w-9">
+                  <Avatar className="h-8 w-8">
+                    <AvatarImage src="https://placehold.co/32x32.png" alt="User Avatar" data-ai-hint="user avatar"/>
+                    <AvatarFallback>U</AvatarFallback>
+                  </Avatar>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuLabel>My Account</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem>Profile</DropdownMenuItem>
+                <DropdownMenuItem>Settings</DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem>Logout</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="icon" className="overflow-hidden rounded-full">
-                <Avatar>
-                  <AvatarImage src="https://placehold.co/40x40.png" alt="User Avatar" data-ai-hint="user avatar"/>
-                  <AvatarFallback>U</AvatarFallback>
-                </Avatar>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>My Account</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem>Profile</DropdownMenuItem>
-              <DropdownMenuItem>Settings</DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem>Logout</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
         </header>
         <ScrollArea className="h-[calc(100vh-3.5rem)]">
           <main className="flex-1 p-4 md:p-6 lg:p-8">
