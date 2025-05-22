@@ -2,70 +2,51 @@
 "use client";
 
 import { useState, useEffect, ChangeEvent } from 'react';
-import type { DataAsset } from '@/lib/types';
+// Removed DataAsset and getAllDataAssets imports
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Loader2, FileSpreadsheet, UploadCloud, Download, AlertTriangle, DatabaseZap } from 'lucide-react';
+import { Loader2, FileSpreadsheet, UploadCloud, Download, AlertTriangle, DatabaseZap, List } from 'lucide-react';
 import { fetchAndParseCsv, convertToCsvString } from '@/lib/csv-utils';
 import { useToast } from "@/hooks/use-toast";
-import { getAllDataAssets } from '@/lib/csv-data-loader'; // Use new data loader
+
+const DB_MOCK_CSV_FILES = [
+  { name: 'Users (users.csv)', path: 'db_mock_data/users.csv' },
+  { name: 'Data Assets (data_assets.csv)', path: 'db_mock_data/data_assets.csv' },
+  { name: 'Column Schemas (column_schemas.csv)', path: 'db_mock_data/column_schemas.csv' },
+  { name: 'Tags (tags.csv)', path: 'db_mock_data/tags.csv' },
+  { name: 'Data Asset Tags (data_asset_tags.csv)', path: 'db_mock_data/data_asset_tags.csv' },
+  { name: 'Business Glossary Terms (business_glossary_terms.csv)', path: 'db_mock_data/business_glossary_terms.csv' },
+  { name: 'Data Asset Business Glossary Terms (data_asset_business_glossary_terms.csv)', path: 'db_mock_data/data_asset_business_glossary_terms.csv' },
+  { name: 'Data Asset Lineage (data_asset_lineage_raw.csv)', path: 'db_mock_data/data_asset_lineage_raw.csv' },
+  { name: 'Bookmarked Data Assets (bookmarked_data_assets.csv)', path: 'db_mock_data/bookmarked_data_assets.csv' },
+];
 
 
 export default function AssetDataManagerPage() {
-  const [allAvailableAssets, setAllAvailableAssets] = useState<DataAsset[]>([]);
-  const [assetsWithCsvPath, setAssetsWithCsvPath] = useState<DataAsset[]>([]); // Assets that have a csvPath
-  const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
+  const [selectedCsvPath, setSelectedCsvPath] = useState<string | null>(null);
   const [currentCsvData, setCurrentCsvData] = useState<Record<string, any>[] | null>(null);
-  const [isLoading, setIsLoading] = useState(false); // General loading for assets list + CSV data
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
 
-  useEffect(() => {
-    async function loadAssets() {
-      setIsLoading(true);
-      try {
-        const assets = await getAllDataAssets();
-        setAllAvailableAssets(assets);
-        // For this "Asset Data Manager", we assume the 'csvPath' points to a full representation.
-        // In a real scenario, this might be a different path or logic.
-        setAssetsWithCsvPath(assets.filter(asset => !!asset.csvPath)); 
-      } catch (e) {
-        setError("Failed to load asset list.");
-        console.error(e);
-      } finally {
-        setIsLoading(false);
-      }
-    }
-    loadAssets();
-  }, []);
+  // Removed useEffect for loading assets
 
   useEffect(() => {
-    if (selectedAssetId) {
-      const asset = allAvailableAssets.find(a => a.id === selectedAssetId);
-      // Use the asset.csvPath which currently points to sample data CSVs.
-      // For this prototype, we're re-purposing it.
-      if (asset?.csvPath) {
-        loadFullCsvData(asset.csvPath); 
-      } else {
-        setCurrentCsvData(null);
-        if (asset && !asset.csvPath) {
-          setError(`Asset "${asset.name}" does not have a CSV path defined for its full data representation.`);
-        }
-      }
+    if (selectedCsvPath) {
+      loadDbMockCsvData(selectedCsvPath);
     } else {
-        setCurrentCsvData(null); // Clear data if no asset is selected
+        setCurrentCsvData(null); 
     }
-  }, [selectedAssetId, allAvailableAssets]);
+  }, [selectedCsvPath]);
 
-  const loadFullCsvData = async (csvPath: string) => {
+  const loadDbMockCsvData = async (csvPath: string) => {
     setIsLoading(true);
     setError(null);
     try {
-      // fetchAndParseCsv fetches from /public, based on the path given
       const result = await fetchAndParseCsv(csvPath); 
       if (result.errors.length > 0) {
         console.warn('CSV parsing errors:', result.errors);
@@ -74,7 +55,7 @@ export default function AssetDataManagerPage() {
       setCurrentCsvData(result.data);
     } catch (err) {
       console.error('Failed to load or parse CSV data:', err);
-      setError('Failed to load or parse CSV data. Ensure the file exists at ' + csvPath + ' in /public and is valid.');
+      setError('Failed to load or parse CSV data. Ensure the file exists at /public/' + csvPath + ' and is valid.');
       setCurrentCsvData(null);
     } finally {
       setIsLoading(false);
@@ -82,12 +63,12 @@ export default function AssetDataManagerPage() {
   };
 
   const handleDownloadCsv = () => {
-    if (!currentCsvData || currentCsvData.length === 0) {
-      toast({ title: "No Data", description: "No data to download.", variant: "destructive" });
+    if (!currentCsvData || currentCsvData.length === 0 || !selectedCsvPath) {
+      toast({ title: "No Data", description: "No data to download or no CSV selected.", variant: "destructive" });
       return;
     }
-    const asset = allAvailableAssets.find(a => a.id === selectedAssetId);
-    const fileName = asset ? `${asset.name}_full_data.csv` : 'full_data.csv';
+    const selectedFile = DB_MOCK_CSV_FILES.find(f => f.path === selectedCsvPath);
+    const fileName = selectedFile ? selectedFile.name.split(' ')[0].toLowerCase() + '.csv' : 'db_mock_data.csv';
     const csvString = convertToCsvString(currentCsvData);
     
     const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
@@ -146,28 +127,27 @@ export default function AssetDataManagerPage() {
     event.target.value = ''; 
   };
 
-  const selectedAsset = allAvailableAssets.find(a => a.id === selectedAssetId);
   const headers = currentCsvData && currentCsvData.length > 0 
                   ? Object.keys(currentCsvData[0]) 
-                  : selectedAsset?.schema.map(s => s.column_name) ?? [];
+                  : [];
 
 
   return (
     <div className="container mx-auto py-8 space-y-6">
       <header className="mb-8">
         <h1 className="text-3xl font-bold text-foreground flex items-center">
-          <DatabaseZap className="mr-3 h-8 w-8 text-primary" />
-          Admin: Asset Data Manager (CSV)
+          <List className="mr-3 h-8 w-8 text-primary" />
+          Admin: Database Mock CSV Manager
         </h1>
         <p className="text-muted-foreground">
-          Manage CSV representations of full data assets. (Using sample CSVs for prototype)
+          View, download, and (simulate) upload database mock CSVs located in `/public/db_mock_data/`.
         </p>
          <Alert variant="default" className="mt-4">
             <AlertTriangle className="h-4 w-4" />
             <AlertTitle>Developer Note</AlertTitle>
             <AlertDescription>
-              This page demonstrates managing CSVs that would represent your full datasets.
-              For this prototype, it uses the same sample CSVs (referenced by `csvPath`) located in `/public/sample_data/`.
+              This page allows management of the CSV files that mock the database tables (e.g., `users.csv`, `data_assets.csv`).
+              These files are located in `/public/db_mock_data/`.
               CSV uploads are client-side only and are not persisted to the server.
             </AlertDescription>
           </Alert>
@@ -175,35 +155,35 @@ export default function AssetDataManagerPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Select Data Asset (Table) to Manage its Full CSV</CardTitle>
+          <CardTitle>Select Database Mock CSV to Manage</CardTitle>
           <div className="flex flex-col sm:flex-row gap-4 mt-4">
             <div className="flex-grow sm:max-w-md">
-              <Select onValueChange={setSelectedAssetId} value={selectedAssetId || ""} disabled={isLoading}>
+              <Select onValueChange={setSelectedCsvPath} value={selectedCsvPath || ""} disabled={isLoading}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select a data asset..." />
+                  <SelectValue placeholder="Select a CSV file..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {assetsWithCsvPath.length > 0 ? assetsWithCsvPath.map(asset => (
-                    <SelectItem key={asset.id} value={asset.id}>
-                      {asset.name} {asset.csvPath ? `(CSV: ${asset.csvPath})` : '(No CSV path)'}
+                  {DB_MOCK_CSV_FILES.map(file => (
+                    <SelectItem key={file.path} value={file.path}>
+                      {file.name}
                     </SelectItem>
-                  )) : <SelectItem value="no-assets-csv" disabled>No assets with CSV paths found</SelectItem>}
+                  ))}
                 </SelectContent>
               </Select>
             </div>
-            {selectedAssetId && selectedAsset?.csvPath && (
+            {selectedCsvPath && (
               <>
                 <Button onClick={handleDownloadCsv} disabled={isLoading || !currentCsvData || currentCsvData.length === 0}>
                   <Download className="mr-2 h-4 w-4" /> Download Displayed CSV
                 </Button>
                 <div className="relative">
                   <Button asChild variant="outline" disabled={isLoading}>
-                    <label htmlFor="csv-upload-asset" className="cursor-pointer">
+                    <label htmlFor="csv-upload-db-mock" className="cursor-pointer">
                       <UploadCloud className="mr-2 h-4 w-4" /> Upload & View New CSV
                     </label>
                   </Button>
                   <Input 
-                    id="csv-upload-asset" 
+                    id="csv-upload-db-mock" 
                     type="file" 
                     accept=".csv" 
                     onChange={handleFileUpload} 
@@ -216,10 +196,10 @@ export default function AssetDataManagerPage() {
           </div>
         </CardHeader>
         <CardContent>
-          {isLoading && !currentCsvData ? ( // Show main loading indicator
+          {isLoading && !currentCsvData ? ( 
             <div className="flex items-center justify-center py-10">
               <Loader2 className="h-12 w-12 animate-spin text-primary" />
-              <p className="ml-4 text-lg text-muted-foreground">Loading data...</p>
+              <p className="ml-4 text-lg text-muted-foreground">Loading CSV data...</p>
             </div>
           ) : error ? (
             <Alert variant="destructive">
@@ -227,10 +207,12 @@ export default function AssetDataManagerPage() {
               <AlertTitle>Error</AlertTitle>
               <AlertDescription>{error}</AlertDescription>
             </Alert>
-          ) : selectedAssetId && currentCsvData ? (
+          ) : selectedCsvPath && currentCsvData ? (
             currentCsvData.length > 0 ? (
               <div className="overflow-x-auto">
-                <h3 className="text-lg font-semibold mb-2">Displaying CSV data for: {selectedAsset?.name}</h3>
+                <h3 className="text-lg font-semibold mb-2">
+                  Displaying data for: {DB_MOCK_CSV_FILES.find(f => f.path === selectedCsvPath)?.name}
+                </h3>
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -251,23 +233,25 @@ export default function AssetDataManagerPage() {
                 </Table>
                 {currentCsvData.length > 20 && <p className="text-sm text-muted-foreground mt-2">Showing first 20 of {currentCsvData.length} records from CSV.</p>}
               </div>
-            ) : ( // CSV loaded but is empty
+            ) : ( 
                 <div className="text-center py-10">
                     <FileSpreadsheet className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-                    <p className="text-muted-foreground">No data found in the CSV or the CSV is empty for {selectedAsset?.name}.</p>
+                    <p className="text-muted-foreground">
+                      No data found in {DB_MOCK_CSV_FILES.find(f => f.path === selectedCsvPath)?.name} or the CSV is empty.
+                    </p>
                 </div>
             )
-          ) : selectedAssetId ? ( // Asset selected, but CSV path might be missing or data not loaded
+          ) : selectedCsvPath ? ( 
              <div className="text-center py-10">
                 <FileSpreadsheet className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
                  <p className="text-muted-foreground">
-                  {selectedAsset?.csvPath ? `Could not load CSV data for ${selectedAsset.name}.` : `No CSV path defined for ${selectedAsset.name} to manage its full data.`}
+                  Could not load CSV data for {DB_MOCK_CSV_FILES.find(f => f.path === selectedCsvPath)?.name}.
                 </p>
             </div>
-          ) : ( // No asset selected
+          ) : ( 
             <div className="text-center py-10">
               <DatabaseZap className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">Select a data asset to manage its CSV representation.</p>
+              <p className="text-muted-foreground">Select a database mock CSV file to view or manage its content.</p>
             </div>
           )}
         </CardContent>
@@ -275,3 +259,4 @@ export default function AssetDataManagerPage() {
     </div>
   );
 }
+
