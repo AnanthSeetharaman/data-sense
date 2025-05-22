@@ -1,12 +1,12 @@
 
 "use client";
 
-import * as React from 'react';
+import * as React from 'react'; // Ensure React is imported
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Bookmark, Filter, Database, Cloud, Snowflake as SnowflakeIcon, Settings, UserCircle, Search as SearchIcon, FileText, BarChart2, Tags as TagsIcon, Info, ShieldCheck, FileSpreadsheet, DatabaseZap, SlidersHorizontal, Globe, PanelLeft, Sun, Moon } from 'lucide-react'; // Added PanelLeft, Sun, Moon
-import { useTheme } from 'next-themes'; // Added useTheme
+import { Home, Bookmark, Filter, Database, Cloud, Snowflake as SnowflakeIcon, Settings, UserCircle, Search as SearchIcon, FileText, BarChart2, Tags as TagsIcon, Info, ShieldCheck, FileSpreadsheet, DatabaseZap, SlidersHorizontal, Globe, PanelLeft, Sun, Moon, List } from 'lucide-react';
+import { useTheme } from 'next-themes';
 import {
   SidebarProvider,
   Sidebar,
@@ -63,7 +63,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { preferredSampleSource, setPreferredSampleSource } = useDataSource();
   const { currentRegion, setCurrentRegion } = useRegion();
-  const { theme, setTheme } = useTheme(); // Added for theme toggle
+  const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = React.useState(false);
+
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Dummy filter state
   const [filters, setFilters] = React.useState({
@@ -142,7 +147,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 </SidebarGroupLabel>
                 <SidebarMenu className="mt-1">
                      <NavItem href="/admin/sample-viewer" icon={<FileSpreadsheet />} label="Sample Data Manager" tooltip="Manage Sample CSVs" />
-                     <NavItem href="/admin/asset-data-manager" icon={<DatabaseZap />} label="Asset Data Manager" tooltip="Manage Full Asset CSVs" />
+                     <NavItem href="/admin/asset-data-manager" icon={<List />} label="Asset Data Manager" tooltip="Manage Full Asset CSVs" />
                 </SidebarMenu>
              </SidebarGroup>
           </SidebarMenu>
@@ -225,7 +230,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
               className="h-9 w-9"
             >
-              {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              {mounted && (theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />)}
               <span className="sr-only">Toggle theme</span>
             </Button>
             <DropdownMenu>
