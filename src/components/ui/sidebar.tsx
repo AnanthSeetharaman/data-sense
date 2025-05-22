@@ -43,7 +43,7 @@ type SidebarContext = {
   isResizing: boolean
   setIsResizing: (resizing: boolean) => void
   side: "left" | "right"
-  initialSidebarWidth: string; // Added for SSR consistency
+  initialSidebarWidth: string; 
 }
 
 const SidebarContext = React.createContext<SidebarContext | null>(null)
@@ -86,7 +86,7 @@ const SidebarProvider = React.forwardRef<
 
     const [sidebarWidth, setSidebarWidthState] = React.useState(initialSidebarWidthProp)
     const [isResizing, setIsResizing] = React.useState(false)
-    const [side] = React.useState<"left" | "right">("left") // Assuming sidebar is always on the left for now
+    const [side] = React.useState<"left" | "right">("left") 
 
     React.useEffect(() => {
       const storedWidth = localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY)
@@ -231,15 +231,13 @@ const Sidebar = React.forwardRef<
       )
     }
 
-    if (isMobile) { // isMobile will be false on server, false on client initially, then true if mobile after mount.
-      // To avoid rendering different structures server/client initially when isMobile is undefined/false,
-      // we could conditionally render the Sheet only after mount if needed, but Sheet itself might be fine.
+    if (isMobile) { 
       return (
         <Sheet open={openMobile} onOpenChange={setOpenMobile} {...props}>
           <SheetContent
             data-sidebar="sidebar"
             data-mobile="true"
-            className="w-[--sidebar-width-mobile] bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden" // Use mobile specific width var
+            className="w-[--sidebar-width-mobile] bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden" 
             style={
               {
                 "--sidebar-width-mobile": SIDEBAR_WIDTH_MOBILE,
@@ -253,8 +251,6 @@ const Sidebar = React.forwardRef<
       )
     }
     
-    // For server render and initial client render, use initialSidebarWidth
-    // For subsequent client renders (after mount), use sidebarWidth (which might be from localStorage)
     const currentEffectiveWidth = mounted && state === "expanded"
         ? sidebarWidth
         : (state === "expanded" ? initialSidebarWidth : SIDEBAR_WIDTH_ICON);
@@ -270,7 +266,7 @@ const Sidebar = React.forwardRef<
         data-collapsible={state === "collapsed" ? collapsible : ""}
         data-variant={variant}
         data-side={side}
-        suppressHydrationWarning={true} // Suppress for className involving isResizing
+        suppressHydrationWarning={true}
       >
         <div
           className={cn(
@@ -283,7 +279,7 @@ const Sidebar = React.forwardRef<
               : "group-data-[collapsible=icon]:w-[--sidebar-width-icon]"
           )}
           style={{ width: currentEffectiveWidth }}
-          suppressHydrationWarning={true} // Suppress for style involving currentEffectiveWidth
+          suppressHydrationWarning={true}
         />
         <div
           className={cn(
@@ -298,7 +294,7 @@ const Sidebar = React.forwardRef<
             className
           )}
           style={{ width: currentEffectiveWidth }}
-          suppressHydrationWarning={true} // Suppress for style involving currentEffectiveWidth
+          suppressHydrationWarning={true}
           {...props}
         >
           <div
@@ -307,6 +303,7 @@ const Sidebar = React.forwardRef<
               "flex h-full w-full flex-col bg-sidebar",
                variant === "floating" ? "group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:border-sidebar-border group-data-[variant=floating]:shadow" : ""
             )}
+            suppressHydrationWarning={true}
           >
             {children}
           </div>
@@ -360,12 +357,11 @@ const SidebarRail = React.forwardRef<
     e.preventDefault();
     setIsResizing(true);
 
-    const startX = e.clientX;
-    // Use parentElement of railRef for initial width, fallback to context's initialSidebarWidth
     let startWidthPx = railRef.current?.parentElement?.offsetWidth;
     if (typeof startWidthPx !== 'number') {
-        startWidthPx = parseFloat(initialSidebarWidth) * (initialSidebarWidth.endsWith('rem') ? 16 : 1); // basic rem to px
+        startWidthPx = parseFloat(initialSidebarWidth) * (initialSidebarWidth.endsWith('rem') ? 16 : 1); 
     }
+    const startX = e.clientX;
     
     const handleMouseMove = (moveEvent: MouseEvent) => {
       let newWidthPx;
@@ -431,7 +427,7 @@ const SidebarInset = React.forwardRef<
         "peer-data-[variant=inset]:min-h-[calc(100svh-theme(spacing.4))] md:peer-data-[variant=inset]:m-2 md:peer-data-[state=collapsed]:peer-data-[variant=inset]:ml-[calc(var(--sidebar-width-icon)_+_theme(spacing.2))] md:peer-data-[variant=inset]:ml-[calc(var(--sidebar-width)_+_theme(spacing.2))] md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow",
         className
       )}
-      suppressHydrationWarning={true} // Suppress for className involving isResizing potentially
+      suppressHydrationWarning={true} 
       {...props}
     />
   )
