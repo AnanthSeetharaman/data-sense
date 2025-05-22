@@ -3,8 +3,8 @@
 
 import { suggestTags as suggestTagsFlow, type SuggestTagsInput, type SuggestTagsOutput } from '@/ai/flows/suggest-tags';
 import { z } from 'zod';
-import { Snowflake } from 'snowflake-sdk';
-import { Client } from 'pg';
+import * as Snowflake from 'snowflake-sdk';
+import { Client as PgClient } from 'pg';
 
 const SuggestTagsActionInputSchema = z.object({
   datasetName: z.string().min(1, "Dataset name cannot be empty."),
@@ -49,71 +49,127 @@ export async function handleSuggestTags(input: SuggestTagsInput): Promise<{ succ
 }
 
 export interface TestConnectionInput {
-  region: string; // e.g., 'EU', 'NA', or 'GLOBAL' for PG
-  url?: string; // JDBC-like URL for Snowflake, potentially PG connection string
-  sourceType: 'Snowflake' | 'PostgreSQL'; // To know which logic to attempt
+  region: string; 
+  url?: string; // For Snowflake, the JDBC-like URL from settings page. Not directly used by snowflake-sdk.
+  sourceType: 'Snowflake' | 'PostgreSQL';
 }
 
 export interface TestConnectionOutput {
   success: boolean;
   message: string;
   details?: string;
+  data?: any; // To return Snowflake current time
 }
 
 export async function testDatabaseConnection(input: TestConnectionInput): Promise<TestConnectionOutput> {
-  console.log("Attempting to test connection with input:", input);
+  console.log("Attempting to test real connection with input:", input);
 
   if (input.sourceType === 'Snowflake') {
-    if (!input.url) {
-      return { success: false, message: "Snowflake URL is missing for the selected region." };
-    }
-    // Placeholder for Snowflake connection test
-    // You would implement the actual Snowflake connection logic here
-    // using the snowflake-sdk and environment variables for credentials.
     const account = process.env.SNOWFLAKE_ACCOUNT;
     const username = process.env.SNOWFLAKE_USERNAME;
     const password = process.env.SNOWFLAKE_PASSWORD;
-    // const warehouse = process.env.SNOWFLAKE_WAREHOUSE; // etc.
+    const warehouse = process.env.SNOWFLAKE_WAREHOUSE;
+    // const database = process.env.SNOWFLAKE_DATABASE; // Optional
+    // const schema = process.env.SNOWFLAKE_SCHEMA; // Optional
 
     if (!account || !username || !password) {
       return {
         success: false,
-        message: "Snowflake connection failed (Simulated).",
-        details: "Required Snowflake environment variables (SNOWFLAKE_ACCOUNT, SNOWFLAKE_USERNAME, SNOWFLAKE_PASSWORD) are not set in .env file. Please configure them and implement the connection logic in src/app/actions.ts."
+        message: "Snowflake connection failed.",
+        details: "Required Snowflake environment variables (SNOWFLAKE_ACCOUNT, SNOWFLAKE_USERNAME, SNOWFLAKE_PASSWORD) are not set in .env file."
+      };
+    }
+     if (!warehouse) {
+      return {
+        success: false,
+        message: "Snowflake connection failed.",
+        details: "SNOWFLAKE_WAREHOUSE environment variable is not set. A warehouse is required to execute queries."
       };
     }
 
-    // TODO: Implement actual Snowflake connection test using 'snowflake-sdk'
-    // Example structure (this is a STUB and won't actually connect):
+    const connection = Snowflake.createConnection({
+      account: account,
+      username: username,
+      password: password,
+      warehouse: warehouse,
+      // database: database, // Optional: can be specified here
+      // schema: schema,     // Optional: can be specified here
+      // region: input.region.toLowerCase() === 'global' ? undefined : input.region, // region from settings can be used if your account URL is generic
+    });
+
     try {
-      // const connection = Snowflake.createConnection({
-      //   account: account,
-      //   username: username,
-      //   password: password,
-      //   url: input.url // The JDBC-like URL might need parsing for the SDK
-      //   // ... other necessary parameters like warehouse, role, database, schema
-      // });
-      // await new Promise((resolve, reject) => {
-      //   connection.connect((err, conn) => {
-      //     if (err) {
-      //       console.error('Snowflake connection error:', err);
-      //       reject(new Error(`Snowflake Connection Error: ${err.message}`));
-      //     } else {
-      //       console.log('Successfully connected to Snowflake account:', conn.getSfqid());
-      //       conn.destroy(() => console.log('Snowflake connection closed.'));
-      //       resolve(true);
-      //     }
-      //   });
-      // });
-      console.log(`[SIMULATED] Would attempt Snowflake connection to URL: ${input.url} for region ${input.region} with user ${username}`);
-      return { success: true, message: `Snowflake connection test to ${input.url} successful (Simulated). Implement actual logic in actions.ts.` };
+      await new Promise<void>((resolve, reject) => {
+        connection.connect((err, conn) => {
+          if (err) {
+            console.error('Snowflake connection error:', err);
+            reject(new Error(`Snowflake Connection Error: ${err.message}`));
+          } else {
+            console.log('Successfully connected to Snowflake account ID:', conn.getId());
+            resolve();
+          }
+        });
+      });
+
+      // Fetch current time
+      const statement = await new Promise<Snowflake.Statement>((resolve, reject) => {
+        connection.execute({
+          sqlText: 'SELECT CURRENT_TIMESTAMP();',
+          complete: (err, stmt, rows) => {
+            if (err) {
+              console.error('Failed to execute statement: ' + err.message);
+              reject(new Error(`Snowflake Query Error: ${err.message}`));
+            } else {
+              console.log('Executed statement with ID: ' + stmt.getStatementId());
+              resolve(stmt);
+            }
+          }
+        });
+      });
+      
+      const rows = await new Promise<any[]>((resolve, reject) => {
+        const stream = statement.streamRows();
+        const rowData: any[] = [];
+        stream.on('error', (err) => {
+          console.error('Unable to K_TIMESTAMP stream rows: ' + err.message);
+          reject(new Error(`Snowflake Stream Error: ${err.message}`));
+        });
+        stream.on('data', (row) => {
+          rowData.push(row);
+        });
+        stream.on('end', () => {
+          resolve(rowData);
+        });
+      });
+
+      const currentTime = rows.length > 0 ? rows[0]['CURRENT_TIMESTAMP()'] : 'Not found';
+
+      return { 
+        success: true, 
+        message: `Snowflake connection to account ${account} successful.`,
+        details: `Current Snowflake time: ${currentTime}`,
+        data: { snowflakeTime: currentTime }
+      };
+
     } catch (err: any) {
-      console.error("Snowflake connection test error (Simulated):", err);
-      return { success: false, message: "Snowflake connection test failed (Simulated).", details: err.message || "Check server logs." };
+      console.error("Snowflake operation error:", err);
+      return { 
+        success: false, 
+        message: "Snowflake operation failed.", 
+        details: err.message || "Check server logs." 
+      };
+    } finally {
+      if (connection.isUp()) {
+        connection.destroy((err, conn) => {
+          if (err) {
+            console.error('Failed to close Snowflake connection: ' + err.message);
+          } else {
+            console.log('Snowflake connection closed successfully.');
+          }
+        });
+      }
     }
 
   } else if (input.sourceType === 'PostgreSQL') {
-    // Placeholder for PostgreSQL connection test
     const host = process.env.POSTGRES_HOST;
     const user = process.env.POSTGRES_USER;
     const password = process.env.POSTGRES_PASSWORD;
@@ -123,28 +179,42 @@ export async function testDatabaseConnection(input: TestConnectionInput): Promis
     if (!host || !user || !password || !database) {
        return {
         success: false,
-        message: "PostgreSQL connection failed (Simulated).",
-        details: "Required PostgreSQL environment variables (POSTGRES_HOST, POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DATABASE) are not set in .env file. Please configure them and implement the connection logic in src/app/actions.ts."
+        message: "PostgreSQL connection failed.",
+        details: "Required PostgreSQL environment variables (POSTGRES_HOST, POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DATABASE) are not set in .env file."
       };
     }
-    // TODO: Implement actual PostgreSQL connection test using 'pg' client
-    // Example structure (this is a STUB and won't actually connect):
+    
+    const pgClient = new PgClient({
+      host,
+      user,
+      password,
+      database,
+      port,
+    });
+
     try {
-      // const client = new Client({
-      //   host,
-      //   user,
-      //   password,
-      //   database,
-      //   port,
-      // });
-      // await client.connect();
-      // console.log('Successfully connected to PostgreSQL.');
-      // await client.end();
-      console.log(`[SIMULATED] Would attempt PostgreSQL connection to host: ${host}, database: ${database}`);
-      return { success: true, message: "PostgreSQL connection test successful (Simulated). Implement actual logic in actions.ts." };
+      await pgClient.connect();
+      console.log('Successfully connected to PostgreSQL.');
+      
+      const result = await pgClient.query('SELECT CURRENT_TIMESTAMP;');
+      const currentTime = result.rows.length > 0 ? result.rows[0].current_timestamp : 'Not found';
+
+      return { 
+        success: true, 
+        message: `PostgreSQL connection to ${host} successful.`,
+        details: `Current PostgreSQL time: ${currentTime}`,
+        data: { postgresTime: currentTime }
+      };
     } catch (err: any) {
-      console.error("PostgreSQL connection test error (Simulated):", err);
-      return { success: false, message: "PostgreSQL connection test failed (Simulated).", details: err.message || "Check server logs." };
+      console.error("PostgreSQL connection or query error:", err);
+      return { 
+        success: false, 
+        message: "PostgreSQL connection test failed.", 
+        details: err.message || "Check server logs." 
+      };
+    } finally {
+      await pgClient.end();
+      console.log('PostgreSQL connection closed.');
     }
   }
 
