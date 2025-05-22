@@ -12,7 +12,19 @@ const SuggestTagsActionInputSchema = z.object({
 export async function handleSuggestTags(input: SuggestTagsInput): Promise<{ success: boolean; data?: SuggestTagsOutput; error?: string }> {
   const validationResult = SuggestTagsActionInputSchema.safeParse(input);
   if (!validationResult.success) {
-    return { success: false, error: validationResult.error.flatten().fieldErrors.toString() };
+    const flatErrors = validationResult.error.flatten();
+    let messages: string[] = [];
+    if (flatErrors.formErrors.length > 0) {
+      messages = messages.concat(flatErrors.formErrors);
+    }
+    for (const field in flatErrors.fieldErrors) {
+      const fieldErrorList = (flatErrors.fieldErrors as Record<string, string[] | undefined>)[field];
+      if (fieldErrorList && fieldErrorList.length > 0) {
+        messages.push(`${field}: ${fieldErrorList.join(', ')}`);
+      }
+    }
+    const fullErrorMessage = messages.join('; ') || "Input validation failed.";
+    return { success: false, error: fullErrorMessage };
   }
 
   try {
@@ -20,9 +32,16 @@ export async function handleSuggestTags(input: SuggestTagsInput): Promise<{ succ
     return { success: true, data: result };
   } catch (error) {
     console.error("Error in suggestTagsFlow:", error);
+    let errorMessage = 'An unexpected error occurred while suggesting tags. Please try again.';
     if (error instanceof Error) {
-        return { success: false, error: error.message };
+      if (error.message && error.message.trim() !== "" && error.message.trim() !== ".") {
+        errorMessage = error.message;
+      } else {
+        errorMessage = 'AI suggestion flow failed with an unspecified error.';
+      }
+    } else if (typeof error === 'string' && error.trim() !== "" && error.trim() !== ".") {
+      errorMessage = error;
     }
-    return { success: false, error: 'An unknown error occurred while suggesting tags.' };
+    return { success: false, error: errorMessage };
   }
 }
