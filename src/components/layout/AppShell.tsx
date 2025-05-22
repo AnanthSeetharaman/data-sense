@@ -100,6 +100,12 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const isDatasetDetailPage = pathname.startsWith('/datasets/');
 
+  const sourceDisplayNames: Record<keyof FilterValues['sources'], string> = {
+    Hive: 'Hive',
+    ADLS: 'ADLS',
+    Snowflake: 'Snowflake [ LIVE ]'
+  };
+
   return (
     <SidebarProvider defaultOpen={!isDatasetDetailPage}>
       <TooltipProvider> {/* Ensure TooltipProvider wraps components using Tooltip */}
@@ -127,7 +133,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                   <div>
                     <Label className="text-sm font-medium">Data Source</Label>
                     <div className="mt-2 space-y-2">
-                      {(['Hive', 'ADLS', 'Snowflake'] as const).map((source) => (
+                      {(Object.keys(sourceDisplayNames) as Array<keyof FilterValues['sources']>).map((source) => (
                         <div key={source} className="flex items-center space-x-2">
                           <Checkbox
                             id={`filter-source-${source.toLowerCase()}`}
@@ -135,7 +141,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                             onCheckedChange={() => handleSourceChange(source)}
                           />
                           <Label htmlFor={`filter-source-${source.toLowerCase()}`} className="text-sm font-normal">
-                            {source}
+                            {sourceDisplayNames[source]}
                           </Label>
                         </div>
                       ))}
@@ -274,3 +280,4 @@ export function AppShell({ children }: { children: ReactNode }) {
     </SidebarProvider>
   );
 }
+
