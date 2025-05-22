@@ -7,35 +7,40 @@ import type { DataAsset } from '@/lib/types';
 // Helper function to execute Snowflake queries
 async function executeQuery(connection: Snowflake.Connection, sqlText: string): Promise<any[]> {
   return new Promise((resolve, reject) => {
+    if (!connection || !connection.execute) {
+      console.error('Snowflake executeQuery: Connection object or execute method is undefined.');
+      return reject(new Error('Snowflake connection object or execute method is undefined.'));
+    }
     connection.execute({
       sqlText,
-      complete: (err, stmt, rows) => {
+      complete: (err, stmt, rows_from_execute) => { // Added rows_from_execute
         if (err) {
           console.error(`Failed to execute Snowflake query: ${sqlText}`, err);
           return reject(err);
         }
         if (!stmt) {
+            console.error("Snowflake execute callback: Statement object (stmt) is undefined/null.");
             return reject(new Error("Snowflake statement is undefined after execution."));
         }
-        // For SELECT queries, rows are usually fetched via streamRows
-        // However, for simple queries that return few rows (like COUNT(*)), 'rows' might be populated
-        if (rows && rows.length > 0) {
-          return resolve(rows);
-        }
         
-        // Stream rows for SELECT queries that return potentially many rows
+        // For SELECT queries that return potentially many rows
         const data: any[] = [];
-        const stream = stmt.streamRows();
-        stream.on('error', (errStream) => {
-          console.error('Snowflake stream error:', errStream);
-          reject(errStream);
-        });
-        stream.on('data', (row) => {
-          data.push(row);
-        });
-        stream.on('end', () => {
-          resolve(data);
-        });
+        try {
+            const stream = stmt.streamRows();
+            stream.on('error', (errStream) => {
+              console.error('Snowflake stream error:', errStream);
+              reject(errStream);
+            });
+            stream.on('data', (row) => {
+              data.push(row);
+            });
+            stream.on('end', () => {
+              resolve(data);
+            });
+        } catch (streamError) {
+            console.error('Error setting up or during Snowflake streamRows:', streamError);
+            reject(streamError);
+        }
       },
     });
   });
@@ -43,11 +48,11 @@ async function executeQuery(connection: Snowflake.Connection, sqlText: string): 
 
 async function getColumnCount(connection: Snowflake.Connection, catalog: string, schema: string, tableName: string): Promise<number> {
   const sql = `
-    SELECT COUNT(*) AS column_count 
-    FROM ${catalog}.INFORMATION_SCHEMA.COLUMNS 
-    WHERE TABLE_CATALOG = '${catalog}' 
-      AND TABLE_SCHEMA = '${schema}' 
-      AND TABLE_NAME = '${tableName}';`;
+    SELECT COUNT(*) AS column_count
+    FROM "${catalog}".INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_CATALOG = '${catalog.replace(/'/g, "''")}'
+      AND TABLE_SCHEMA = '${schema.replace(/'/g, "''")}'
+      AND TABLE_NAME = '${tableName.replace(/'/g, "''")}';`;
   try {
     const rows = await executeQuery(connection, sql);
     return rows[0] && rows[0].COLUMN_COUNT ? Number(rows[0].COLUMN_COUNT) : 0;
@@ -65,6 +70,7 @@ export async function GET() {
   const database = process.env.SNOWFLAKE_DATABASE; // Used to filter in the query
 
   if (!account || !username || !password || !warehouse || !database) {
+    console.error("Snowflake API: Environment variables not fully configured.");
     return NextResponse.json(
       { error: 'Snowflake environment variables are not fully configured.' },
       { status: 500 }
@@ -72,6 +78,7 @@ export async function GET() {
   }
 
   if (process.env.SNOWFLAKE_AUTHENTICATOR?.toUpperCase() === 'EXTERNALBROWSER') {
+    console.warn("Snowflake API: EXTERNALBROWSER authenticator is not supported for this API route.");
     return NextResponse.json(
       { error: 'EXTERNALBROWSER authenticator is not supported for API routes. Please use username/password or key-pair auth for server-side connections.' },
       { status: 501 } // Not Implemented
@@ -83,7 +90,7 @@ export async function GET() {
     username,
     password,
     warehouse,
-    database, // Set database context for the connection
+    database,
   };
   if (process.env.SNOWFLAKE_SCHEMA) {
     connectionOptions.schema = process.env.SNOWFLAKE_SCHEMA;
@@ -92,22 +99,45 @@ export async function GET() {
       connectionOptions.region = process.env.SNOWFLAKE_REGION;
   }
 
+  let connection: Snowflake.Connection | null = null;
+  try {
+    connection = Snowflake.createConnection(connectionOptions);
+  } catch (createError: any) {
+    console.error('Snowflake API: Error creating connection object:', createError);
+    return NextResponse.json(
+      { error: `Failed to create Snowflake connection object: ${createError.message || 'Unknown error'}` },
+      { status: 500 }
+    );
+  }
 
-  const connection = Snowflake.createConnection(connectionOptions);
+  if (!connection) {
+    console.error('Snowflake API: Connection object is null after creation attempt.');
+     return NextResponse.json(
+      { error: 'Failed to initialize Snowflake connection object.' },
+      { status: 500 }
+    );
+  }
 
   try {
     await new Promise<void>((resolve, reject) => {
+      if (!connection) { // Should not happen given the check above, but as a safeguard
+          console.error('Snowflake API: Connection is null before connect call.');
+          return reject(new Error('Snowflake connection is null before connect.'));
+      }
       connection.connect((err, conn) => {
         if (err) {
-          console.error('Snowflake connection error:', err);
+          console.error('Snowflake API: Connection error:', err);
           return reject(new Error(`Snowflake Connection Error: ${err.message}`));
         }
         resolve();
       });
     });
 
+    // Use the SNOWFLAKE_DATABASE from .env to filter the query
+    const dbFilter = database.replace(/'/g, "''"); // Basic sanitization for SQL string
+
     const mainQuery = `
-      SELECT 
+      SELECT
           t.table_catalog,
           t.table_schema,
           t.table_name,
@@ -115,27 +145,21 @@ export async function GET() {
           t.comment AS description,
           t.created,
           t.last_altered AS last_modified,
-          t.row_count,
-          t.bytes,
+          t.owner AS owner_role, -- Directly use t.owner for the role name
           t.clustering_key,
-          ar.role_name AS owner_role 
-      FROM 
-          ${database}.information_schema.tables t
-      LEFT JOIN 
-          ${database}.information_schema.applicable_roles ar 
-          ON t.owner_role_type = 'ROLE' AND t.owner = ar.role_name 
-          -- Simpler join for owner, might need adjustment based on actual Snowflake setup for ownership tracking
-          -- Or use CURRENT_ROLE() logic if a single role perspective is sufficient
-      WHERE 
+          t.row_count,
+          t.bytes
+      FROM
+          "${dbFilter}".information_schema.tables t
+      WHERE
           t.table_schema NOT IN ('INFORMATION_SCHEMA', 'PUBLIC') -- Exclude default/meta schemas
-          AND t.table_catalog = '${database}' -- Filter by the database from .env
+          AND t.table_catalog = '${dbFilter}' -- Filter by the database from .env
           AND t.table_type IN ('BASE TABLE', 'VIEW')
-      ORDER BY 
+      ORDER BY
           t.table_schema, t.table_name;
     `;
 
     const tablesData = await executeQuery(connection, mainQuery);
-
     const dataAssets: DataAsset[] = [];
 
     for (const row of tablesData) {
@@ -145,13 +169,12 @@ export async function GET() {
       const fullLocation = `${catalog}.${schema}.${tableName}`;
 
       const columnCount = await getColumnCount(connection, catalog, schema, tableName);
-      
-      // Ensure dates are ISO strings
+
       const createdAt = row.CREATED ? new Date(row.CREATED).toISOString() : undefined;
       const lastModified = row.LAST_MODIFIED ? new Date(row.LAST_MODIFIED).toISOString() : undefined;
 
       dataAssets.push({
-        id: fullLocation, // Use full path as ID
+        id: fullLocation,
         source: 'Snowflake',
         name: tableName,
         location: fullLocation,
@@ -159,16 +182,16 @@ export async function GET() {
         sampleRecordCount: row.ROW_COUNT ? Number(row.ROW_COUNT) : undefined,
         description: row.DESCRIPTION || undefined,
         owner: row.OWNER_ROLE || undefined,
-        isSensitive: false, // Default, as not available from this query
+        isSensitive: false,
         lastModified: lastModified,
         created_at: createdAt,
-        updated_at: lastModified, // Using last_modified for updated_at
-        rawSchemaForAI: "Schema details not fetched in this overview.", // Placeholder
-        rawQuery: `SELECT * FROM ${fullLocation} LIMIT 100;`, // Example query
-        schema: [], // Placeholder
-        tags: [],   // Placeholder
-        businessGlossaryTerms: [], // Placeholder
-        lineage: [], // Placeholder
+        updated_at: lastModified,
+        rawSchemaForAI: "Schema details not fetched in this overview.",
+        rawQuery: `SELECT * FROM "${fullLocation}" LIMIT 100;`,
+        schema: [],
+        tags: [],
+        businessGlossaryTerms: [],
+        lineage: [],
       });
     }
 
@@ -190,3 +213,4 @@ export async function GET() {
     }
   }
 }
+
