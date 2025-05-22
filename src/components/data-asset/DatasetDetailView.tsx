@@ -2,7 +2,7 @@
 "use client";
 
 import type { DataAsset, ColumnSchema, RawLineageEntry } from '@/lib/types';
-import { useState, useEffect }from 'react';
+import { useState, useEffect, useCallback }from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -27,77 +27,112 @@ import { format } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from "@/hooks/use-toast";
-import { fetchAndParseCsv } from '@/lib/csv-utils';
+// fetchAndParseCsv is for client-side public CSVs, not used for API calls here.
+// import { fetchAndParseCsv } from '@/lib/csv-utils'; 
 import { useDataSource } from '@/contexts/DataSourceContext'; 
 
 interface DatasetDetailViewProps {
-  asset: DataAsset | null; 
+  initialAsset: DataAsset | null; // Asset data fetched server-side
+  assetId: string; // The raw ID from URL, e.g. "db.schema.table"
 }
 
-export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProps) {
-  const [asset, setAsset] = useState(initialAsset);
+export function DatasetDetailView({ initialAsset, assetId }: DatasetDetailViewProps) {
+  const [asset, setAsset] = useState<DataAsset | null>(initialAsset);
   const [newTag, setNewTag] = useState('');
   const { toast } = useToast();
-  const [isLoading, setIsLoading] = useState(!initialAsset);
+  const [isLoading, setIsLoading] = useState(!initialAsset); // True if initialAsset is null
   
-  const { preferredSampleSource } = useDataSource(); 
+  // const { preferredSampleSource } = useDataSource(); // Not directly used here anymore for data source, but for warning
   
-  const [csvSampleData, setCsvSampleData] = useState<Record<string, any>[] | null>(null);
-  const [csvLoading, setCsvLoading] = useState(false);
-  const [csvError, setCsvError] = useState<string | null>(null);
+  const [sampleData, setSampleData] = useState<Record<string, any>[] | null>(null);
+  const [sampleDataLoading, setSampleDataLoading] = useState(false);
+  const [sampleDataError, setSampleDataError] = useState<string | null>(null);
+
+  const [lineageData, setLineageData] = useState<RawLineageEntry[] | null>(null);
+  const [lineageLoading, setLineageLoading] = useState(false);
+  const [lineageError, setLineageError] = useState<string | null>(null);
 
   const [activeTab, setActiveTab] = useState<string>('overview');
   const [showSampleDataWarningDialog, setShowSampleDataWarningDialog] = useState(false);
   const [pendingTabChange, setPendingTabChange] = useState<string | null>(null);
 
+  const apiAssetIdParts = assetId.split('.');
+  const apiBaseUrl = `/api/snowflake-assets`;
+
+
+  const fetchSampleData = useCallback(async () => {
+    if (apiAssetIdParts.length < 3) {
+      setSampleDataError("Invalid asset ID for fetching sample data.");
+      return;
+    }
+    const [db, schema, table] = [apiAssetIdParts.slice(0,-2).join('.'), apiAssetIdParts[apiAssetIdParts.length-2], apiAssetIdParts[apiAssetIdParts.length-1]];
+
+
+    setSampleDataLoading(true);
+    setSampleDataError(null);
+    try {
+      const response = await fetch(`${apiBaseUrl}/sample/${db}/${schema}/${table}`);
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ error: `HTTP error ${response.status}` }));
+        throw new Error(err.error || `Failed to fetch sample data`);
+      }
+      const data = await response.json();
+      setSampleData(data);
+    } catch (error: any) {
+      setSampleDataError(error.message || 'Failed to load sample data.');
+      setSampleData(null);
+    } finally {
+      setSampleDataLoading(false);
+    }
+  }, [assetId, apiBaseUrl, apiAssetIdParts]);
+
+  const fetchLineageData = useCallback(async () => {
+     if (apiAssetIdParts.length < 3) {
+      setLineageError("Invalid asset ID for fetching lineage data.");
+      return;
+    }
+    const [db, schema, table] = [apiAssetIdParts.slice(0,-2).join('.'), apiAssetIdParts[apiAssetIdParts.length-2], apiAssetIdParts[apiAssetIdParts.length-1]];
+
+    setLineageLoading(true);
+    setLineageError(null);
+    try {
+      const response = await fetch(`${apiBaseUrl}/lineage/${db}/${schema}/${table}`);
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ error: `HTTP error ${response.status}` }));
+        throw new Error(err.error || `Failed to fetch lineage data`);
+      }
+      const data = await response.json();
+      setLineageData(data);
+    } catch (error: any) {
+      setLineageError(error.message || 'Failed to load lineage data.');
+      setLineageData(null);
+    } finally {
+      setLineageLoading(false);
+    }
+  }, [assetId, apiBaseUrl, apiAssetIdParts]);
+
 
   useEffect(() => {
-    if (initialAsset) {
-        setAsset(initialAsset);
-        setIsLoading(false);
-        if (initialAsset.id !== asset?.id) {
-            setCsvSampleData(null);
-            setCsvError(null);
-            setActiveTab('overview'); 
-        }
-    } else {
-        const timer = setTimeout(() => {
-             setIsLoading(false); 
-        }, 1000);
-        return () => clearTimeout(timer);
+    setAsset(initialAsset);
+    setIsLoading(!initialAsset);
+    // Reset tab-specific data if asset changes
+    if (initialAsset && initialAsset.id !== asset?.id) {
+      setSampleData(null);
+      setSampleDataError(null);
+      setLineageData(null);
+      setLineageError(null);
+      setActiveTab('overview'); 
     }
   }, [initialAsset, asset?.id]);
 
-  const loadCsvData = async () => {
-    if (!asset?.csvPath) return;
-    setCsvLoading(true);
-    setCsvError(null);
-    try {
-      const result = await fetchAndParseCsv(asset.csvPath);
-      if (result.errors.length > 0) {
-        console.warn('CSV parsing errors:', result.errors);
-        setCsvError(`Encountered ${result.errors.length} parsing error(s). Check console for details.`);
-      }
-      setCsvSampleData(result.data);
-    } catch (error) {
-      console.error('Failed to load or parse CSV data:', error);
-      setCsvError('Failed to load or parse CSV data. See console for details.');
-      setCsvSampleData(null);
-    } finally {
-      setCsvLoading(false);
-    }
-  };
-
   useEffect(() => {
-    // Load CSV data if 'local_csv' is preferred, asset has a path, and data isn't already loaded/loading/errored, AND sample tab is active
-    if (activeTab === 'sample' && preferredSampleSource === 'local_csv' && asset?.csvPath && !csvSampleData && !csvLoading && !csvError) {
-      loadCsvData();
-    } else if (preferredSampleSource === 'pg' && activeTab === 'sample') {
-      // If switching back to PG, clear CSV specific states to ensure pgMockedSampleData is used
-      setCsvSampleData(null);
-      setCsvError(null);
+    if (activeTab === 'sample' && !sampleData && !sampleDataLoading && !sampleDataError && asset) {
+      // fetchSampleData(); // Now called after warning confirmation
     }
-  }, [preferredSampleSource, asset, csvSampleData, csvLoading, csvError, activeTab]);
+    if (activeTab === 'lineage' && !lineageData && !lineageLoading && !lineageError && asset) {
+      fetchLineageData();
+    }
+  }, [activeTab, sampleData, sampleDataLoading, sampleDataError, lineageData, lineageLoading, lineageError, asset, fetchSampleData, fetchLineageData]);
 
 
   if (isLoading) {
@@ -114,7 +149,7 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
       <div className="text-center py-10">
         <AlertTriangle className="mx-auto h-12 w-12 text-destructive mb-4" />
         <h2 className="text-2xl font-semibold text-destructive mb-2">Dataset Not Found</h2>
-        <p className="text-muted-foreground">The requested data asset could not be found.</p>
+        <p className="text-muted-foreground">The requested data asset could not be found or loaded.</p>
         <Button variant="outline" className="mt-6" asChild>
           <Link href="/">
             <ArrowLeft className="mr-2 h-4 w-4" /> Go Back to Discover
@@ -128,7 +163,7 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
     const tagToAdd = tagValue.trim();
     if (tagToAdd && !asset.tags.map(t => t.toLowerCase()).includes(tagToAdd.toLowerCase())) {
       setAsset(prev => prev ? { ...prev, tags: [...prev.tags, tagToAdd] } : null);
-      toast({ title: "Tag Added (Prototype)", description: `"${tagToAdd}" has been added locally.` });
+      toast({ title: "Tag Added (Prototype)", description: `"${tagToAdd}" has been added locally. Persistence not implemented.` });
     } else if (!tagToAdd) {
        toast({ variant: "destructive", title: "Invalid Tag", description: "Tag cannot be empty." });
     } else {
@@ -139,7 +174,7 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
 
   const handleRemoveTag = (tagToRemove: string) => {
     setAsset(prev => prev ? { ...prev, tags: prev.tags.filter(tag => tag !== tagToRemove) } : null);
-    toast({ title: "Tag Removed (Prototype)", description: `"${tagToRemove}" has been removed locally.` });
+    toast({ title: "Tag Removed (Prototype)", description: `"${tagToRemove}" has been removed locally. Persistence not implemented.` });
   };
   
   const copyToClipboard = (text: string, type: string) => {
@@ -158,12 +193,8 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
     });
   };
 
-  const currentDisplaySampleData = preferredSampleSource === 'local_csv' ? csvSampleData : asset.pgMockedSampleData;
-  const currentSampleSourceLabel = preferredSampleSource === 'local_csv' ? 'Local CSV' : 'PG (Simulated)';
-  const sampleDataIsPotentiallyCostly = preferredSampleSource === 'pg' || (preferredSampleSource === 'local_csv' && !!asset.csvPath);
-
   const handleTabChange = (newTabValue: string) => {
-    if (newTabValue === 'sample' && sampleDataIsPotentiallyCostly && !currentDisplaySampleData && !csvLoading && !csvError) {
+    if (newTabValue === 'sample' && !sampleData && !sampleDataLoading && !sampleDataError) {
         setPendingTabChange(newTabValue);
         setShowSampleDataWarningDialog(true);
     } else {
@@ -172,22 +203,22 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
   };
 
   const handleProceedWithSampleData = () => {
-    if (pendingTabChange) {
-        setActiveTab(pendingTabChange);
+    if (pendingTabChange === 'sample') {
+        setActiveTab('sample');
+        fetchSampleData(); // Fetch data after confirmation
     }
     setShowSampleDataWarningDialog(false);
     setPendingTabChange(null);
-    // Data loading for CSV will be triggered by useEffect listening on activeTab
   };
 
   const handleCancelSampleData = () => {
     setShowSampleDataWarningDialog(false);
     setPendingTabChange(null);
   };
-
+  
   const lineageTableHeaders: (keyof RawLineageEntry)[] = [
-    "REFERENCED_OBJECT_NAME", "REFERENCED_DATABASE", "REFERENCED_SCHEMA", "REFERENCED_OBJECT_DOMAIN", "DEPENDENCY_TYPE",
-    "REFERENCING_OBJECT_NAME", "REFERENCING_DATABASE", "REFERENCING_SCHEMA", "REFERENCING_OBJECT_DOMAIN"
+    "REFERENCED_OBJECT_ID", "REFERENCED_OBJECT_DOMAIN", "DEPENDENCY_TYPE",
+    "REFERENCING_OBJECT_ID", "REFERENCING_OBJECT_DOMAIN"
   ];
 
   return (
@@ -200,8 +231,8 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
               Confirm: Load Sample Data
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Loading sample data can be a costly and time-consuming process, especially for large datasets or remote sources. 
-              Are you sure you want to proceed?
+              Loading sample data involves a live query to Snowflake which can be a costly and time-consuming process. 
+              Are you sure you want to proceed? (Max 5 records will be fetched)
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -234,7 +265,7 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
           </div>
         </CardHeader>
         <CardContent className="p-6">
-          <p className="text-foreground leading-relaxed mb-6">{asset.description}</p>
+          <p className="text-foreground leading-relaxed mb-6">{asset.description || "No description available."}</p>
         </CardContent>
       </Card>
 
@@ -244,7 +275,7 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
           <TabsTrigger value="schema"><Layers className="mr-1 h-4 w-4 sm:mr-2"/>Schema</TabsTrigger>
           <TabsTrigger value="tags"><Tag className="mr-1 h-4 w-4 sm:mr-2"/>Tags</TabsTrigger>
           <TabsTrigger value="sample"><Database className="mr-1 h-4 w-4 sm:mr-2"/>Sample Data</TabsTrigger>
-          <TabsTrigger value="lineage"><GitFork className="mr-1 h-4 w-4 sm:mr-2"/>Lineage & Query</TabsTrigger>
+          <TabsTrigger value="lineage"><GitFork className="mr-1 h-4 w-4 sm:mr-2"/>Lineage</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview">
@@ -255,9 +286,10 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
                 <h3 className="font-semibold">Key Information</h3>
                 <ul className="list-disc list-inside text-sm space-y-1 text-foreground">
                   <li><span className="font-medium">Columns:</span> {asset.columnCount}</li>
-                  {asset.sampleRecordCount != null && <li><span className="font-medium">Total Sample Records (approx):</span> {asset.sampleRecordCount.toLocaleString()}</li>}
+                  {asset.sampleRecordCount != null && <li><span className="font-medium">Total Records (approx):</span> {asset.sampleRecordCount.toLocaleString()}</li>}
                   {asset.owner && <li><span className="font-medium">Owner:</span> {asset.owner}</li>}
                   {asset.lastModified && <li><span className="font-medium">Last Modified:</span> {format(new Date(asset.lastModified), 'PPP p')}</li>}
+                  {asset.created_at && <li><span className="font-medium">Created At:</span> {format(new Date(asset.created_at), 'PPP p')}</li>}
                   {asset.isSensitive && <li className="flex items-center"><Lock className="h-4 w-4 mr-1 text-destructive" /> <span className="font-medium text-destructive">Contains Sensitive Data</span></li>}
                 </ul>
               </div>
@@ -277,26 +309,30 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
           <Card>
             <CardHeader><CardTitle>Schema Details</CardTitle></CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Column Name</TableHead>
-                    <TableHead>Data Type</TableHead>
-                    <TableHead>Nullable</TableHead>
-                    <TableHead>Description</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {asset.schema.map((col: ColumnSchema) => (
-                    <TableRow key={col.column_name}>
-                      <TableCell className="font-medium">{col.column_name}</TableCell>
-                      <TableCell>{col.data_type}</TableCell>
-                      <TableCell>{col.is_nullable ? 'Yes' : 'No'}</TableCell>
-                      <TableCell className="text-muted-foreground">{col.description || '-'}</TableCell>
+              {asset.schema && asset.schema.length > 0 ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Column Name</TableHead>
+                      <TableHead>Data Type</TableHead>
+                      <TableHead>Nullable</TableHead>
+                      <TableHead>Description</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {asset.schema.map((col: ColumnSchema) => (
+                      <TableRow key={col.column_name}>
+                        <TableCell className="font-medium">{col.column_name}</TableCell>
+                        <TableCell>{col.data_type}</TableCell>
+                        <TableCell>{col.is_nullable ? 'Yes' : 'No'}</TableCell>
+                        <TableCell className="text-muted-foreground">{col.description || '-'}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : (
+                 <p className="text-muted-foreground">Schema information is not available for this asset.</p>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -307,7 +343,7 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
             <CardContent>
               <div className="mb-4">
                 <h4 className="font-semibold mb-2">Current Tags:</h4>
-                {asset.tags.length > 0 ? (
+                {asset.tags && asset.tags.length > 0 ? (
                   <div className="flex flex-wrap gap-2">
                     {asset.tags.map(tag => (
                       <Badge key={tag} variant="secondary" className="text-sm py-1 px-2">
@@ -317,7 +353,7 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
                     ))}
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">No tags yet.</p>
+                  <p className="text-sm text-muted-foreground">No tags applied. (Tags from Snowflake are not currently fetched).</p>
                 )}
               </div>
               <div className="flex gap-2 items-center mb-4">
@@ -333,8 +369,8 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
               </div>
               <AITagSuggester
                 datasetName={asset.name}
-                rawSchemaForAI={asset.rawSchemaForAI}
-                currentTags={asset.tags}
+                rawSchemaForAI={asset.rawSchemaForAI || ""}
+                currentTags={asset.tags || []}
                 onAddTag={handleAddTag}
               />
             </CardContent>
@@ -344,32 +380,32 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
         <TabsContent value="sample">
              <Card>
                 <CardHeader>
-                    <CardTitle>Sample Data (Source: {currentSampleSourceLabel})</CardTitle>
+                    <CardTitle>Sample Data (Live from Snowflake - Max 5 Records)</CardTitle>
                 </CardHeader>
                 <CardContent>
-                {(preferredSampleSource === 'local_csv' && csvLoading) ? (
+                {sampleDataLoading ? (
                     <div className="flex items-center justify-center py-6">
                         <Loader2 className="h-8 w-8 animate-spin text-primary mr-2" />
-                        <p className="text-muted-foreground">Loading CSV data...</p>
+                        <p className="text-muted-foreground">Loading sample data from Snowflake...</p>
                     </div>
-                ) : (preferredSampleSource === 'local_csv' && csvError) ? (
+                ) : sampleDataError ? (
                     <Alert variant="destructive">
                         <AlertTriangle className="h-4 w-4" />
-                        <AlertTitle>Error Loading CSV</AlertTitle>
-                        <AlertDescription>{csvError}</AlertDescription>
+                        <AlertTitle>Error Loading Sample Data</AlertTitle>
+                        <AlertDescription>{sampleDataError}</AlertDescription>
                     </Alert>
-                ) : (currentDisplaySampleData && currentDisplaySampleData.length > 0) ? (
+                ) : (sampleData && sampleData.length > 0) ? (
                     <div className="overflow-x-auto">
                         <Table>
                             <TableHeader>
                             <TableRow>
-                                {Object.keys(currentDisplaySampleData[0]).map(key => (
+                                {Object.keys(sampleData[0]).map(key => (
                                 <TableHead key={key}>{key}</TableHead>
                                 ))}
                             </TableRow>
                             </TableHeader>
                             <TableBody>
-                            {currentDisplaySampleData.slice(0, 10).map((row, rowIndex) => ( 
+                            {sampleData.map((row, rowIndex) => ( 
                                 <TableRow key={rowIndex}>
                                 {Object.values(row).map((value, cellIndex) => (
                                     <TableCell key={cellIndex}>{String(value ?? '')}</TableCell>
@@ -378,23 +414,14 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
                             ))}
                             </TableBody>
                         </Table>
-                         {currentDisplaySampleData.length > 10 && <p className="text-sm text-muted-foreground mt-2">Showing 10 of {currentDisplaySampleData.length} sample records from {currentSampleSourceLabel}.</p>}
+                         {sampleData.length >= 5 && <p className="text-sm text-muted-foreground mt-2">Showing first 5 sample records from Snowflake.</p>}
                     </div>
                 ) : (
                     <div className="text-center py-6">
                         <Database className="mx-auto h-10 w-10 text-muted-foreground mb-3" />
                         <p className="text-muted-foreground">
-                            {preferredSampleSource === 'local_csv' && !asset.csvPath 
-                                ? "No CSV file associated with this asset for sample data."
-                                : `Sample data is not available for this asset from the selected source (${currentSampleSourceLabel}).`
-                            }
+                           No sample data returned from Snowflake or tab not yet activated. Click "Get Samples" if warning was shown.
                         </p>
-                         { preferredSampleSource === 'local_csv' && asset.csvPath && !csvError &&
-                            <p className="text-sm text-muted-foreground mt-1">Try selecting 'PG (Simulated)' from the global dropdown in the header if available.</p>
-                         }
-                         { preferredSampleSource === 'pg' && (!asset.pgMockedSampleData || asset.pgMockedSampleData.length === 0) &&
-                            <p className="text-sm text-muted-foreground mt-1">Try selecting 'Local CSV Samples' from the global dropdown if a CSV path is defined for this asset.</p>
-                         }
                     </div>
                 )}
                 </CardContent>
@@ -402,11 +429,21 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
         </TabsContent>
 
         <TabsContent value="lineage">
-          <div className="grid md:grid-cols-1 gap-6"> 
             <Card>
-                <CardHeader><CardTitle>Lineage</CardTitle></CardHeader>
+                <CardHeader><CardTitle>Lineage (from SNOWFLAKE.ACCOUNT_USAGE.OBJECT_DEPENDENCIES)</CardTitle></CardHeader>
                 <CardContent>
-                {(asset.lineage && asset.lineage.length > 0) ? (
+                {lineageLoading ? (
+                    <div className="flex items-center justify-center py-6">
+                        <Loader2 className="h-8 w-8 animate-spin text-primary mr-2" />
+                        <p className="text-muted-foreground">Loading lineage data from Snowflake...</p>
+                    </div>
+                ) : lineageError ? (
+                    <Alert variant="destructive">
+                        <AlertTriangle className="h-4 w-4" />
+                        <AlertTitle>Error Loading Lineage Data</AlertTitle>
+                        <AlertDescription>{lineageError}</AlertDescription>
+                    </Alert>
+                ) : (lineageData && lineageData.length > 0) ? (
                   <div className="overflow-x-auto">
                     <Table>
                       <TableHeader>
@@ -417,7 +454,7 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {asset.lineage.map((entry, rowIndex) => (
+                        {lineageData.map((entry, rowIndex) => (
                           <TableRow key={rowIndex}>
                             {lineageTableHeaders.map(header => (
                               <TableCell key={`${rowIndex}-${header}`}>{String(entry[header] ?? '-')}</TableCell>
@@ -430,12 +467,12 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
                 ) : (
                   <div className="text-center py-6">
                       <GitFork className="mx-auto h-10 w-10 text-muted-foreground mb-3" />
-                      <p className="text-muted-foreground">Lineage information is not available for this asset.</p>
+                      <p className="text-muted-foreground">No lineage information found for this asset in Snowflake's OBJECT_DEPENDENCIES view, or the view is not accessible.</p>
                   </div>
                 )}
                 </CardContent>
             </Card>
-            <Card>
+             <Card className="mt-6">
                 <CardHeader><CardTitle>Example Query</CardTitle></CardHeader>
                 <CardContent>
                 {asset.rawQuery ? (
@@ -453,12 +490,8 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
                 )}
                 </CardContent>
             </Card>
-          </div>
         </TabsContent>
       </Tabs>
     </div>
   );
 }
-
-
-    
