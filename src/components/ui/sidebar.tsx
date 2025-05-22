@@ -43,6 +43,7 @@ type SidebarContext = {
   isResizing: boolean
   setIsResizing: (resizing: boolean) => void
   side: "left" | "right"
+  initialSidebarWidth: string; // Added for SSR consistency
 }
 
 const SidebarContext = React.createContext<SidebarContext | null>(null)
@@ -70,7 +71,7 @@ const SidebarProvider = React.forwardRef<
       defaultOpen = true,
       open: openProp,
       onOpenChange: setOpenProp,
-      initialSidebarWidth = DEFAULT_SIDEBAR_WIDTH,
+      initialSidebarWidth: initialSidebarWidthProp = DEFAULT_SIDEBAR_WIDTH,
       className,
       style,
       children,
@@ -83,7 +84,7 @@ const SidebarProvider = React.forwardRef<
     const [_open, _setOpen] = React.useState(defaultOpen)
     const open = openProp ?? _open
 
-    const [sidebarWidth, setSidebarWidthState] = React.useState(initialSidebarWidth)
+    const [sidebarWidth, setSidebarWidthState] = React.useState(initialSidebarWidthProp)
     const [isResizing, setIsResizing] = React.useState(false)
     const [side] = React.useState<"left" | "right">("left") // Assuming sidebar is always on the left for now
 
@@ -156,8 +157,9 @@ const SidebarProvider = React.forwardRef<
         isResizing,
         setIsResizing,
         side,
+        initialSidebarWidth: initialSidebarWidthProp,
       }),
-      [state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar, sidebarWidth, setSidebarWidth, isResizing, setIsResizing, side]
+      [state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar, sidebarWidth, setSidebarWidth, isResizing, setIsResizing, side, initialSidebarWidthProp]
     )
 
     return (
@@ -191,14 +193,12 @@ SidebarProvider.displayName = "SidebarProvider"
 const Sidebar = React.forwardRef<
   HTMLDivElement,
   React.ComponentProps<"div"> & {
-    // side?: "left" | "right" // side is now from context
     variant?: "sidebar" | "floating" | "inset"
     collapsible?: "offcanvas" | "icon" | "none"
   }
 >(
   (
     {
-      // side = "left", // side is now from context
       variant = "sidebar",
       collapsible = "offcanvas",
       className,
@@ -207,7 +207,13 @@ const Sidebar = React.forwardRef<
     },
     ref
   ) => {
-    const { isMobile, state, openMobile, setOpenMobile, sidebarWidth, isResizing, side } = useSidebar()
+    const { isMobile, state, openMobile, setOpenMobile, sidebarWidth, isResizing, side, initialSidebarWidth } = useSidebar()
+    const [mounted, setMounted] = React.useState(false);
+
+    React.useEffect(() => {
+        setMounted(true);
+    }, []);
+
 
     if (collapsible === "none") {
       return (
@@ -225,7 +231,9 @@ const Sidebar = React.forwardRef<
       )
     }
 
-    if (isMobile) {
+    if (isMobile) { // isMobile will be false on server, false on client initially, then true if mobile after mount.
+      // To avoid rendering different structures server/client initially when isMobile is undefined/false,
+      // we could conditionally render the Sheet only after mount if needed, but Sheet itself might be fine.
       return (
         <Sheet open={openMobile} onOpenChange={setOpenMobile} {...props}>
           <SheetContent
@@ -245,19 +253,24 @@ const Sidebar = React.forwardRef<
       )
     }
     
-    const currentEffectiveWidth = state === "expanded" ? sidebarWidth : SIDEBAR_WIDTH_ICON;
+    // For server render and initial client render, use initialSidebarWidth
+    // For subsequent client renders (after mount), use sidebarWidth (which might be from localStorage)
+    const currentEffectiveWidth = mounted && state === "expanded"
+        ? sidebarWidth
+        : (state === "expanded" ? initialSidebarWidth : SIDEBAR_WIDTH_ICON);
 
     return (
       <div
         ref={ref}
         className={cn(
           "group peer hidden md:block text-sidebar-foreground",
-           isResizing ? "transition-none" : "transition-[width]" // Disable transition during resize
+           isResizing ? "transition-none" : "transition-[width]" 
         )}
         data-state={state}
         data-collapsible={state === "collapsed" ? collapsible : ""}
         data-variant={variant}
         data-side={side}
+        suppressHydrationWarning={true} // Suppress for className involving isResizing
       >
         <div
           className={cn(
@@ -270,6 +283,7 @@ const Sidebar = React.forwardRef<
               : "group-data-[collapsible=icon]:w-[--sidebar-width-icon]"
           )}
           style={{ width: currentEffectiveWidth }}
+          suppressHydrationWarning={true} // Suppress for style involving currentEffectiveWidth
         />
         <div
           className={cn(
@@ -284,6 +298,7 @@ const Sidebar = React.forwardRef<
             className
           )}
           style={{ width: currentEffectiveWidth }}
+          suppressHydrationWarning={true} // Suppress for style involving currentEffectiveWidth
           {...props}
         >
           <div
@@ -329,26 +344,35 @@ const SidebarTrigger = React.forwardRef<
 SidebarTrigger.displayName = "SidebarTrigger"
 
 const SidebarRail = React.forwardRef<
-  HTMLDivElement, // Changed from button to div to act as a handle
-  React.HTMLAttributes<HTMLDivElement> // Changed props
+  HTMLDivElement, 
+  React.HTMLAttributes<HTMLDivElement> 
 >(({ className, ...props }, ref) => {
-  const { setSidebarWidth, setIsResizing, side, state } = useSidebar()
+  const { setSidebarWidth, setIsResizing, side, state, initialSidebarWidth } = useSidebar()
   const railRef = React.useRef<HTMLDivElement>(null)
+  const [mounted, setMounted] = React.useState(false);
+
+  React.useEffect(() => {
+      setMounted(true);
+  }, []);
 
   const handleMouseDown = React.useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (state === "collapsed") return; // Don't allow resizing when collapsed to icon
+    if (state === "collapsed" || !mounted) return; 
     e.preventDefault();
     setIsResizing(true);
 
     const startX = e.clientX;
-    const startWidth = railRef.current?.parentElement?.offsetWidth || parseFloat(DEFAULT_SIDEBAR_WIDTH) * 16; // Fallback if parent not found
-
+    // Use parentElement of railRef for initial width, fallback to context's initialSidebarWidth
+    let startWidthPx = railRef.current?.parentElement?.offsetWidth;
+    if (typeof startWidthPx !== 'number') {
+        startWidthPx = parseFloat(initialSidebarWidth) * (initialSidebarWidth.endsWith('rem') ? 16 : 1); // basic rem to px
+    }
+    
     const handleMouseMove = (moveEvent: MouseEvent) => {
       let newWidthPx;
       if (side === "left") {
-        newWidthPx = startWidth + (moveEvent.clientX - startX);
+        newWidthPx = startWidthPx + (moveEvent.clientX - startX);
       } else {
-        newWidthPx = startWidth - (moveEvent.clientX - startX);
+        newWidthPx = startWidthPx - (moveEvent.clientX - startX);
       }
 
       newWidthPx = Math.max(MIN_SIDEBAR_WIDTH_PX, Math.min(newWidthPx, MAX_SIDEBAR_WIDTH_PX));
@@ -368,10 +392,10 @@ const SidebarRail = React.forwardRef<
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
 
-  }, [setSidebarWidth, setIsResizing, side, state]);
+  }, [setSidebarWidth, setIsResizing, side, state, initialSidebarWidth, mounted]);
 
 
-  if (state === "collapsed") { // If collapsed to icon, rail is not for resizing
+  if (state === "collapsed" || !mounted) { 
     return null;
   }
 
@@ -382,7 +406,7 @@ const SidebarRail = React.forwardRef<
       onMouseDown={handleMouseDown}
       title="Resize Sidebar"
       className={cn(
-        "absolute inset-y-0 z-20 hidden w-2 transition-colors ease-linear group-data-[state=expanded]:flex", // Only show when expanded
+        "absolute inset-y-0 z-20 hidden w-2 transition-colors ease-linear group-data-[state=expanded]:flex", 
         side === "left" ? "right-0 -mr-1 cursor-ew-resize" : "left-0 -ml-1 cursor-ew-resize",
         "hover:bg-sidebar-border",
         className
@@ -403,10 +427,11 @@ const SidebarInset = React.forwardRef<
       ref={ref}
       className={cn(
         "relative flex min-h-svh flex-1 flex-col bg-background",
-        isResizing ? "transition-none" : "", // Prevent transition during resize
+        isResizing ? "transition-none" : "", 
         "peer-data-[variant=inset]:min-h-[calc(100svh-theme(spacing.4))] md:peer-data-[variant=inset]:m-2 md:peer-data-[state=collapsed]:peer-data-[variant=inset]:ml-[calc(var(--sidebar-width-icon)_+_theme(spacing.2))] md:peer-data-[variant=inset]:ml-[calc(var(--sidebar-width)_+_theme(spacing.2))] md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow",
         className
       )}
+      suppressHydrationWarning={true} // Suppress for className involving isResizing potentially
       {...props}
     />
   )
@@ -842,3 +867,4 @@ export {
   SidebarTrigger,
   useSidebar,
 }
+
