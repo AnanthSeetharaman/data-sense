@@ -6,7 +6,7 @@ import { AppShell } from '@/components/layout/AppShell';
 import { Toaster } from "@/components/ui/toaster";
 import { DataSourceProvider } from '@/contexts/DataSourceContext';
 import { RegionProvider } from '@/contexts/RegionContext';
-import { ThemeProvider } from 'next-themes'; // Added import
+import { ThemeProvider } from 'next-themes';
 
 const inter = Inter({
   variable: '--font-geist-sans',
@@ -24,9 +24,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={inter.variable} suppressHydrationWarning> {/* Added suppressHydrationWarning for next-themes */}
+    <html lang="en" className={inter.variable} suppressHydrationWarning>
       <body className="antialiased">
-        <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}> {/* Added ThemeProvider */}
+        <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
           <DataSourceProvider>
             <RegionProvider>
               <AppShell>{children}</AppShell>
