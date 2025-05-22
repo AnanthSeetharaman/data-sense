@@ -1,20 +1,15 @@
 
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google'; // Changed from GeistSans
+import { Inter } from 'next/font/google';
 import './globals.css';
 import { AppShell } from '@/components/layout/AppShell';
 import { Toaster } from "@/components/ui/toaster";
+import { DataSourceProvider } from '@/contexts/DataSourceContext'; // Added import
 
-const inter = Inter({ // Changed from geistSans to inter, and use Inter font loader
-  variable: '--font-geist-sans', // Kept variable name for CSS compatibility
+const inter = Inter({
+  variable: '--font-geist-sans',
   subsets: ['latin'],
 });
-
-// Note: GeistMono is not explicitly used in the new design files, but kept for now.
-// const geistMono = GeistMono({
-//   variable: '--font-geist-mono',
-//   subsets: ['latin'],
-// });
 
 export const metadata: Metadata = {
   title: 'DataLens - Unified Data Catalog',
@@ -29,7 +24,9 @@ export default function RootLayout({
   return (
     <html lang="en" className={inter.variable}>
       <body className="antialiased">
-        <AppShell>{children}</AppShell>
+        <DataSourceProvider> {/* Added Provider */}
+          <AppShell>{children}</AppShell>
+        </DataSourceProvider>
         <Toaster />
       </body>
     </html>

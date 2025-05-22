@@ -5,7 +5,7 @@ import * as React from 'react';
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Bookmark, Filter, Database, Cloud, Snowflake as SnowflakeIcon, Settings, UserCircle, Search as SearchIcon, FileText, BarChart2, Tags as TagsIcon, Info, ShieldCheck, FileSpreadsheet, DatabaseZap } from 'lucide-react';
+import { Home, Bookmark, Filter, Database, Cloud, Snowflake as SnowflakeIcon, Settings, UserCircle, Search as SearchIcon, FileText, BarChart2, Tags as TagsIcon, Info, ShieldCheck, FileSpreadsheet, DatabaseZap, SlidersHorizontal } from 'lucide-react'; // Added SlidersHorizontal
 import {
   SidebarProvider,
   Sidebar,
@@ -17,8 +17,8 @@ import {
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
-  SidebarMenuSub,
-  SidebarMenuSubButton,
+  // SidebarMenuSub, // Not used currently
+  // SidebarMenuSubButton, // Not used currently
   SidebarGroup,
   SidebarGroupLabel
 } from '@/components/ui/sidebar';
@@ -31,6 +31,8 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select'; // Added Select components
+import { useDataSource, type SampleDataSourceType } from '@/contexts/DataSourceContext'; // Added useDataSource
 
 interface NavItemProps {
   href: string;
@@ -59,6 +61,7 @@ const NavItem: React.FC<NavItemProps> = ({ href, icon, label, tooltip }) => {
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const { preferredSampleSource, setPreferredSampleSource } = useDataSource();
 
   // Dummy filter state
   const [filters, setFilters] = React.useState({
@@ -156,7 +159,33 @@ export function AppShell({ children }: { children: ReactNode }) {
              <SidebarTrigger />
           </div>
           <div className="flex-1">
-            {/* Breadcrumbs or page title could go here */}
+            {/* Global Sample Data Source Selector */}
+            <div className="flex items-center gap-2">
+              <SlidersHorizontal className="h-4 w-4 text-muted-foreground" />
+              <Select
+                value={preferredSampleSource}
+                onValueChange={(value) => setPreferredSampleSource(value as SampleDataSourceType)}
+              >
+                <SelectTrigger className="w-[230px] h-8 text-xs">
+                  <SelectValue placeholder="Sample Data Source..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectLabel className="text-xs">Preferred Sample Source</SelectLabel>
+                    <SelectItem value="pg">
+                        <div className="flex items-center gap-2">
+                            <Database className="h-4 w-4" /> PG (Simulated)
+                        </div>
+                    </SelectItem>
+                    <SelectItem value="local_csv">
+                        <div className="flex items-center gap-2">
+                            <FileSpreadsheet className="h-4 w-4" /> Local CSV Samples
+                        </div>
+                    </SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <div className="relative flex-1 md:grow-0">
             <SearchIcon className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />

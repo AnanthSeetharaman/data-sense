@@ -12,27 +12,33 @@ import { SourceIcon } from './SourceIcon';
 import { BookmarkButton } from './BookmarkButton';
 import { AITagSuggester } from './AITagSuggester';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+// Removed Select components for local sample data source, will use global context
 import { AlertTriangle, ArrowLeft, Calendar, ClipboardCopy, Database, FileText, Layers, LinkIcon, Loader2, Lock, MapPin, MessageSquare, Share2, Tag, Users, Info, Check, FileSpreadsheet, GitFork } from 'lucide-react';
 import { format } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from "@/hooks/use-toast";
-import { fetchAndParseCsv, type ParseCsvResult } from '@/lib/csv-utils';
-
+import { fetchAndParseCsv } from '@/lib/csv-utils';
+import { useDataSource } from '@/contexts/DataSourceContext'; // Import useDataSource
 
 interface DatasetDetailViewProps {
   asset: DataAsset | null; 
 }
 
-type SampleDataSource = 'pg' | 'csv';
+// type SampleDataSource was local, now using global SampleDataSourceType from context
+// export type SampleDataSource = 'pg' | 'csv'; 
 
 export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProps) {
   const [asset, setAsset] = useState(initialAsset);
   const [newTag, setNewTag] = useState('');
   const { toast } = useToast();
-  const [isLoading, setIsLoading] = useState(!initialAsset); // True if no initial asset
-  const [sampleDataSource, setSampleDataSource] = useState<SampleDataSource>('pg');
+  const [isLoading, setIsLoading] = useState(!initialAsset);
+  
+  const { preferredSampleSource } = useDataSource(); // Use global context
+
+  // Removed local sampleDataSource state:
+  // const [sampleDataSource, setSampleDataSource] = useState<SampleDataSource>('pg'); 
+  
   const [csvSampleData, setCsvSampleData] = useState<Record<string, any>[] | null>(null);
   const [csvLoading, setCsvLoading] = useState(false);
   const [csvError, setCsvError] = useState<string | null>(null);
@@ -41,23 +47,22 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
     if (initialAsset) {
         setAsset(initialAsset);
         setIsLoading(false);
-        // Reset CSV specific states if asset changes
         if (initialAsset.id !== asset?.id) {
             setCsvSampleData(null);
             setCsvError(null);
-            setSampleDataSource('pg'); // Default back to PG
+            // No need to reset sampleDataSource locally, it's global now
         }
     } else {
-        // If initialAsset is null (e.g. not found), keep loading true for a bit then show error
         const timer = setTimeout(() => {
              setIsLoading(false); 
-        }, 1000); // Give a small delay before showing "Not Found"
+        }, 1000);
         return () => clearTimeout(timer);
     }
   }, [initialAsset, asset?.id]);
 
   useEffect(() => {
-    if (sampleDataSource === 'csv' && asset?.csvPath && !csvSampleData && !csvLoading && !csvError) {
+    // Load CSV data if 'local_csv' is preferred, asset has a path, and data isn't already loaded/loading/errored
+    if (preferredSampleSource === 'local_csv' && asset?.csvPath && !csvSampleData && !csvLoading && !csvError) {
       const loadCsvData = async () => {
         setCsvLoading(true);
         setCsvError(null);
@@ -77,8 +82,12 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
         }
       };
       loadCsvData();
+    } else if (preferredSampleSource === 'pg') {
+      // If switching back to PG, clear CSV specific states to ensure pgMockedSampleData is used
+      setCsvSampleData(null);
+      setCsvError(null);
     }
-  }, [sampleDataSource, asset, csvSampleData, csvLoading, csvError]);
+  }, [preferredSampleSource, asset, csvSampleData, csvLoading, csvError]);
 
 
   if (isLoading) {
@@ -108,7 +117,6 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
   const handleAddTag = (tagValue: string) => {
     const tagToAdd = tagValue.trim();
     if (tagToAdd && !asset.tags.map(t => t.toLowerCase()).includes(tagToAdd.toLowerCase())) {
-      // In a real app, this would be an API call. For now, update local state.
       setAsset(prev => prev ? { ...prev, tags: [...prev.tags, tagToAdd] } : null);
       toast({ title: "Tag Added (Prototype)", description: `"${tagToAdd}" has been added locally.` });
     } else if (!tagToAdd) {
@@ -120,7 +128,6 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
   };
 
   const handleRemoveTag = (tagToRemove: string) => {
-    // In a real app, this would be an API call.
     setAsset(prev => prev ? { ...prev, tags: prev.tags.filter(tag => tag !== tagToRemove) } : null);
     toast({ title: "Tag Removed (Prototype)", description: `"${tagToRemove}" has been removed locally.` });
   };
@@ -141,7 +148,9 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
     });
   };
 
-  const currentDisplaySampleData = sampleDataSource === 'csv' ? csvSampleData : asset.pgMockedSampleData;
+  // Determine which sample data to display based on global preference
+  const currentDisplaySampleData = preferredSampleSource === 'local_csv' ? csvSampleData : asset.pgMockedSampleData;
+  const currentSampleSourceLabel = preferredSampleSource === 'local_csv' ? 'Local CSV' : 'PG (Simulated)';
 
   const lineageTableHeaders: (keyof RawLineageEntry)[] = [
     "REFERENCED_OBJECT_NAME", "REFERENCED_DATABASE", "REFERENCED_SCHEMA", "REFERENCED_OBJECT_DOMAIN", "DEPENDENCY_TYPE",
@@ -282,38 +291,16 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
         <TabsContent value="sample">
              <Card>
                 <CardHeader>
-                    <div className="flex justify-between items-center">
-                        <CardTitle>Sample Data</CardTitle>
-                        <div className="w-[220px]">
-                            <Select value={sampleDataSource} onValueChange={(value) => setSampleDataSource(value as SampleDataSource)}>
-                            <SelectTrigger>
-                                <SelectValue placeholder="Select sample source" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="pg">
-                                  <div className="flex items-center gap-2">
-                                    <Database className="h-4 w-4" /> PostgreSQL (Mocked)
-                                  </div>
-                                </SelectItem>
-                                {asset.csvPath && ( // Only show CSV option if path exists
-                                  <SelectItem value="csv">
-                                    <div className="flex items-center gap-2">
-                                      <FileSpreadsheet className="h-4 w-4" /> Local CSV
-                                    </div>
-                                  </SelectItem>
-                                )}
-                            </SelectContent>
-                            </Select>
-                        </div>
-                    </div>
+                    {/* Removed the local Select dropdown for sample source */}
+                    <CardTitle>Sample Data (Source: {currentSampleSourceLabel})</CardTitle>
                 </CardHeader>
                 <CardContent>
-                {(sampleDataSource === 'csv' && csvLoading) ? (
+                {(preferredSampleSource === 'local_csv' && csvLoading) ? (
                     <div className="flex items-center justify-center py-6">
                         <Loader2 className="h-8 w-8 animate-spin text-primary mr-2" />
                         <p className="text-muted-foreground">Loading CSV data...</p>
                     </div>
-                ) : (sampleDataSource === 'csv' && csvError) ? (
+                ) : (preferredSampleSource === 'local_csv' && csvError) ? (
                     <Alert variant="destructive">
                         <AlertTriangle className="h-4 w-4" />
                         <AlertTitle>Error Loading CSV</AlertTitle>
@@ -339,17 +326,23 @@ export function DatasetDetailView({ asset: initialAsset }: DatasetDetailViewProp
                             ))}
                             </TableBody>
                         </Table>
-                         {currentDisplaySampleData.length > 10 && <p className="text-sm text-muted-foreground mt-2">Showing 10 of {currentDisplaySampleData.length} sample records from {sampleDataSource === 'csv' ? 'CSV' : 'PG (Mocked)'}.</p>}
+                         {currentDisplaySampleData.length > 10 && <p className="text-sm text-muted-foreground mt-2">Showing 10 of {currentDisplaySampleData.length} sample records from {currentSampleSourceLabel}.</p>}
                     </div>
                 ) : (
                     <div className="text-center py-6">
                         <Database className="mx-auto h-10 w-10 text-muted-foreground mb-3" />
                         <p className="text-muted-foreground">
-                            {sampleDataSource === 'csv' && !asset.csvPath 
+                            {preferredSampleSource === 'local_csv' && !asset.csvPath 
                                 ? "No CSV file associated with this asset for sample data."
-                                : `Sample data is not available for this asset from the selected source (${sampleDataSource === 'csv' ? 'CSV' : 'PG (Mocked)'}).`
+                                : `Sample data is not available for this asset from the selected source (${currentSampleSourceLabel}).`
                             }
                         </p>
+                         { preferredSampleSource === 'local_csv' && asset.csvPath && !csvError &&
+                            <p className="text-sm text-muted-foreground mt-1">Try selecting 'PG (Simulated)' from the global dropdown in the header if available.</p>
+                         }
+                         { preferredSampleSource === 'pg' && (!asset.pgMockedSampleData || asset.pgMockedSampleData.length === 0) &&
+                            <p className="text-sm text-muted-foreground mt-1">Try selecting 'Local CSV Samples' from the global dropdown if a CSV path is defined for this asset.</p>
+                         }
                     </div>
                 )}
                 </CardContent>
