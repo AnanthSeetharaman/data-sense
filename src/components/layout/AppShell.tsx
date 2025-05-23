@@ -4,7 +4,7 @@
 import React, { useState, useEffect, type ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Bookmark, Filter, Database, Cloud, Snowflake as SnowflakeIcon, Settings, UserCircle, Search as SearchIcon, FileText, BarChart2, Tags as TagsIcon, Info, ShieldCheck, FileSpreadsheet, DatabaseZap, SlidersHorizontal, Globe, PanelLeft, Sun, Moon, List } from 'lucide-react';
+import { Home, Bookmark, Filter, Database, Cloud, Snowflake as SnowflakeIcon, Settings, UserCircle, Search as SearchIcon, FileText, BarChart2, Tags as TagsIcon, Info, ShieldCheck, FileSpreadsheet, DatabaseZap, SlidersHorizontal, Globe, PanelLeft, Sun, Moon, List, Bot as BotIcon } from 'lucide-react'; // Added BotIcon
 import { useTheme } from 'next-themes';
 import {
   SidebarProvider,
@@ -26,13 +26,14 @@ import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"; // Changed from Checkbox
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useDataSource, type SampleDataSourceType } from '@/contexts/DataSourceContext';
 import { useRegion, REGIONS, type Region } from '@/contexts/RegionContext';
-import { useFilters, type FilterValues, type DataSourceType } from '@/contexts/FilterContext'; // Updated FilterValues and added DataSourceType
+import { useFilters, type FilterValues, type DataSourceType } from '@/contexts/FilterContext';
+import { AIChatFilterDialog } from '@/components/common/AIChatFilterDialog'; // Added import
 
 interface NavItemProps {
   href: string;
@@ -66,18 +67,20 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { applyFilters: applyGlobalFilters, clearFilters: clearGlobalFiltersFromContext } = useFilters();
 
   const [currentFilterSelections, setCurrentFilterSelections] = useState<FilterValues>({
-    source: null, // Changed from object to single value or null
+    source: null,
     tags: '',
   });
+
+  const [isAIChatOpen, setIsAIChatOpen] = useState(false); // State for AI chat dialog
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  const handleSourceSelect = (source: DataSourceType) => {
+  const handleSourceSelect = (source: DataSourceType | null) => { // Allow null for initial/deselected state
     setCurrentFilterSelections(prev => ({
       ...prev,
-      source: source === prev.source ? null : source, // Allow deselect by clicking again (optional) or just set
+      source: source,
     }));
   };
 
@@ -86,12 +89,16 @@ export function AppShell({ children }: { children: ReactNode }) {
   };
 
   const handleApplyFiltersClick = () => {
+    if (!currentFilterSelections.source && !currentFilterSelections.tags) {
+        // Optionally, provide feedback if no filters are meaningfully set
+        // For now, allow applying empty filters to potentially clear results
+    }
     applyGlobalFilters(currentFilterSelections);
   };
   
   const handleClearFiltersClick = () => {
     setCurrentFilterSelections({
-      source: null, // Reset to null
+      source: null,
       tags: '',
     });
     clearGlobalFiltersFromContext();
@@ -100,7 +107,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const isDatasetDetailPage = pathname.startsWith('/datasets/');
 
   const sourceDisplayNames: Record<DataSourceType, string> = {
-    MetaStore: 'MetaStore', // Represents Hive/ADLS/CSV backend
+    MetaStore: 'MetaStore',
     Snowflake: 'Snowflake [ LIVE ]'
   };
 
@@ -131,7 +138,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                   <div>
                     <Label className="text-sm font-medium">Data Source</Label>
                     <RadioGroup
-                      value={currentFilterSelections.source || ""} // Handle null for RadioGroup value
+                      value={currentFilterSelections.source || ""} 
                       onValueChange={(value) => handleSourceSelect(value as DataSourceType)}
                       className="mt-2 space-y-1"
                     >
@@ -239,6 +246,15 @@ export function AppShell({ children }: { children: ReactNode }) {
             <div className="flex-1"></div>
 
             <div className="flex items-center gap-2">
+               <Button
+                variant="outline"
+                size="sm" 
+                onClick={() => setIsAIChatOpen(true)}
+                className="h-9"
+              >
+                <BotIcon className="mr-2 h-4 w-4" />
+                Chat with AI
+              </Button>
               <Button
                 variant="outline"
                 size="icon"
@@ -275,6 +291,12 @@ export function AppShell({ children }: { children: ReactNode }) {
           </ScrollArea>
         </SidebarInset>
       </TooltipProvider>
+      <AIChatFilterDialog
+        isOpen={isAIChatOpen}
+        onOpenChange={setIsAIChatOpen}
+        applyFilters={applyGlobalFilters} // Pass the applyFilters function
+      />
     </SidebarProvider>
   );
 }
+
