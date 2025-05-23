@@ -2,6 +2,7 @@
 'use server';
 
 import { suggestTags as suggestTagsFlow, type SuggestTagsInput, type SuggestTagsOutput } from '@/ai/flows/suggest-tags';
+import { queryToFilters as queryToFiltersFlow, type QueryToFiltersInput, type QueryToFiltersOutput } from '@/ai/flows/query-to-filters-flow';
 import { z } from 'zod';
 import * as Snowflake from 'snowflake-sdk';
 import type { ConnectionOptions } from 'snowflake-sdk'; // Import ConnectionOptions type
@@ -48,6 +49,50 @@ export async function handleSuggestTags(input: SuggestTagsInput): Promise<{ succ
     return { success: false, error: errorMessage };
   }
 }
+
+const QueryToFiltersActionInputSchema = z.object({
+  userQuery: z.string().min(1, "User query cannot be empty."),
+});
+
+export async function handleQueryToFilters(
+  input: QueryToFiltersInput
+): Promise<{ success: boolean; data?: QueryToFiltersOutput; error?: string }> {
+  const validationResult = QueryToFiltersActionInputSchema.safeParse(input);
+  if (!validationResult.success) {
+    const flatErrors = validationResult.error.flatten();
+    let messages: string[] = [];
+    if (flatErrors.formErrors.length > 0) {
+      messages = messages.concat(flatErrors.formErrors);
+    }
+    for (const field in flatErrors.fieldErrors) {
+      const fieldErrorList = (flatErrors.fieldErrors as Record<string, string[] | undefined>)[field];
+      if (fieldErrorList && fieldErrorList.length > 0) {
+        messages.push(`${field}: ${fieldErrorList.join(', ')}`);
+      }
+    }
+    const fullErrorMessage = messages.join('; ') || "Input validation failed for AI query.";
+    return { success: false, error: fullErrorMessage };
+  }
+
+  try {
+    const result = await queryToFiltersFlow(validationResult.data);
+    return { success: true, data: result };
+  } catch (error) {
+    console.error("Error in queryToFiltersFlow:", error);
+    let errorMessage = 'An unexpected error occurred while processing your query with AI. Please try again.';
+     if (error instanceof Error) {
+      if (error.message && error.message.trim() !== "" && error.message.trim() !== ".") {
+        errorMessage = error.message;
+      } else {
+        errorMessage = 'AI query processing failed with an unspecified error.';
+      }
+    } else if (typeof error === 'string' && error.trim() !== "" && error.trim() !== ".") {
+      errorMessage = error;
+    }
+    return { success: false, error: errorMessage };
+  }
+}
+
 
 export interface TestConnectionInput {
   region: string;
@@ -441,5 +486,4 @@ export async function testDatabaseConnection(input: TestConnectionInput): Promis
   log(unsupportedMsg, 'error');
   return { success: false, message: unsupportedMsg, details: "This source type is not configured for connection testing.", logs: capturedLogs };
 }
-
     
